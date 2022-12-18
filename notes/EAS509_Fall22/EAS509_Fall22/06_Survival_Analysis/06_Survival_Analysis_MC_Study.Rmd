@@ -1,0 +1,307 @@
+---
+title: "Survival Analysis - Monte Carlo Simulation Study"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+
+library(ggplot2)
+library(cowplot)
+#library(plotly)
+
+library(survival)
+library(survminer)
+```
+
+# Survival Analysis - Monte Carlo Simulation Study
+
+The purpose of this study is to see the effect of earlier subject dismissal on accuracy of survival at time of study completion depending on simple calculation or survival probability chaining.
+
+
+# Distribution Selection
+
+```{r }
+# BrainCancer data set
+library(ISLR2)
+
+ggplot(BrainCancer,aes(x=time)) + facet_wrap(~status) + geom_histogram()
+```
+
+```{r }
+set.seed(4202022)
+# Poisson
+df <- rbind(
+  data.frame(lambda=10,t=rpois(5000,10)),
+  data.frame(lambda=20,t=rpois(5000,20)),
+  data.frame(lambda=40,t=rpois(5000,40))
+)
+ggplot(df, aes(x=t)) + facet_wrap(~lambda,ncol=1) + geom_histogram(binwidth=1)
+```
+
+
+```{r }
+set.seed(4202022)
+
+df <- rbind(
+  data.frame(df=10,t=rchisq(5000,10)),
+  data.frame(df=20,t=rchisq(5000,20)),
+  data.frame(df=40,t=rchisq(5000,40))
+)
+ggplot(df, aes(x=t)) + facet_wrap(~df,ncol=1) + geom_histogram(binwidth=1)
+```
+```{r }
+set.seed(4202022)
+
+df <- NULL
+for(shape in c(1,2,4)){
+  for(scale in c(0.5, 1, 2)){
+    df <- rbind(
+      df,
+      data.frame(shape=shape,scale=scale,t=rgamma(5000,shape=shape,scale=scale))
+      )
+  }
+}
+ggplot(df, aes(x=t)) + facet_grid(as.factor(shape)~as.factor(scale)) + geom_histogram()
+```
+
+```{r }
+set.seed(4202022)
+
+df <- NULL
+for(shape in c(3, 4, 5)){
+  for(scale in c(15, 10, 4)){
+    df <- rbind(
+      df,
+      data.frame(shape=shape,scale=scale,t=rgamma(5000,shape=shape,scale=scale))
+      )
+  }
+}
+ggplot(df, aes(x=t)) + facet_grid(as.factor(shape)~as.factor(scale)) + geom_histogram()
+```
+Lets say whole study is 60 months
+
+```{r }
+# probability of what?
+pgamma(60, shape=4,scale=10)
+```
+Lets event been gamma distributed with shape=4,scale=15
+
+Lets study drop out be calculated as:
+
+1. Select n_d drop outs
+2. Generate drop out time uniformly from start of study to the end
+3. If drop out time smaller than event, go with it otherwise skip it
+
+```{r }
+set.seed(4202022)
+
+# number of subjects
+n <- 1000
+# number of possible droup out
+n_d <- as.integer(0.7*n)
+# end of study
+t_end <- 60
+
+shape<-4
+scale<-10
+
+df <- data.frame(t_event=rgamma(n,shape=shape,scale=scale), drop_outs_time = 2*t_end, t=NA, status=1)
+
+drop_outs_id <- sample(n,n_d)
+df$drop_outs_time[drop_outs_id] <- runif(n_d,0,t_end)
+
+# apply censoring
+df$drop_outs_time[df$drop_outs_time > t_end] <- t_end
+
+drop_outs_id <- df$drop_outs_time < df$t_event
+df$status[drop_outs_id] <- 0
+
+df$t <- df$t_event
+df$t[drop_outs_id] <- df$drop_outs_time[drop_outs_id]
+
+cat("drop outs (%):", 100*sum(df$status==0)/n)
+head(df)
+```
+
+
+```{r}
+plot_grid(
+  ggplot(df %>% filter(t<60 & status==0),aes(x=t)) + geom_histogram(breaks=c(seq(0,150,5))),
+  ggplot(df %>% filter(t<60 & status==1),aes(x=t)) + geom_histogram(breaks=c(seq(0,150,5))),
+  ggplot(df, aes(x=t_event)) + geom_histogram(breaks=c(seq(0,150,5))),
+  ncol=1
+)
+```
+```{r}
+cat("Try survival to end of study\n")
+1 - pgamma(t_end, shape=shape,scale=scale)
+
+
+cat("Simple Binomial calculation\n")
+event_occurs <- filter(df, status==1 & t <= 60) %>% nrow()
+dropouts <- filter(df, status==0 & t < 60) %>% nrow()
+no_event <- filter(df, t >= 60) %>% nrow()
+cat("event_occurs",event_occurs,"dropouts",dropouts,"no_event",no_event,"\n")
+
+binom.test(c(no_event,event_occurs))
+
+
+cat("Survival\n")
+fit_surv <- survfit(Surv(t, status) ~ 1, data=df)
+summary(fit_surv, times = 60)
+
+ggsurvplot(fit = fit_surv)
+```
+
+Method    | Value
+----------|------
+Try       | 0.15
+Simple    | 0.08
+Surv. An. | 0.17
+
+Can we generalize?
+
+```{r}
+cat("Simple Binomial calculation without censoring\n")
+event_occurs <- filter(df, t_event <= 60) %>% nrow()
+no_event <- filter(df,t_event >= 60) %>% nrow()
+
+binom.test(c(no_event,event_occurs))
+```
+
+
+# Lets get some stats
+
+```{r}
+set.seed(4202022)
+
+gen_sample <- function(n,n_d,t_end=60, shape=4, scale=10, run_id=0) {
+  df <- data.frame(run_id=run_id, t_event=rgamma(n,shape=shape,scale=scale), drop_outs_time = 2*t_end, t=NA, status=1)
+  
+  drop_outs_id <- sample(n,n_d)
+  df$drop_outs_time[drop_outs_id] <- runif(n_d,0,t_end)
+  
+  # apply censoring
+  df$drop_outs_time[df$drop_outs_time > t_end] <- t_end
+  
+  drop_outs_id <- df$drop_outs_time < df$t_event
+  df$status[drop_outs_id] <- 0
+  
+  df$t <- df$t_event
+  df$t[drop_outs_id] <- df$drop_outs_time[drop_outs_id]
+
+  return(df)
+}
+
+gen_all_samples <- function(n_sim, n,n_d,t_end=60, shape=4, scale=10) {
+  df <- NULL
+  for(run_id in 1:n_sim){
+    df <- rbind(
+      df,
+      gen_sample(n,n_d,t_end=t_end, shape=shape, scale=scale, run_id=run_id)
+    )
+  }
+  return(df)
+}
+
+# number of simulations
+n_sim <- 5
+# number of subjects
+n <- 10
+# number of possible droup out
+n_d <- as.integer(0.7*n)
+# end of study
+t_end <- 60
+# event distribution
+shape <-4
+scale <- 10
+
+df <- gen_all_samples(n_sim, n,n_d,t_end=60, shape=4, scale=10)
+#head(df)
+df
+```
+```{r}
+# number of simulations
+n_sim <- 1000
+# number of subjects
+n <- 100
+# number of possible droup out
+n_d <- as.integer(0.7*n)
+# end of study
+t_end <- 60
+# event distribution
+shape <-4
+scale <- 10
+
+df <- gen_all_samples(n_sim, n,n_d,t_end=60, shape=4, scale=10)
+#head(df)
+df
+```
+
+```{r}
+dropout_calc <- function(m_df) {
+  dropout_perc <- 100*sum(m_df$status==0 & m_df$t < t_end)/nrow(m_df)
+  
+  # Try survival to end of study
+  theory <- 1 - pgamma(t_end, shape=shape,scale=scale)
+  
+  
+  # Simple Binomial calculation
+  event_occurs <- filter(m_df, status==1 & t <= t_end) %>% nrow()
+  no_event <- filter(m_df, t >= t_end) %>% nrow()
+  
+  simple <- binom.test(c(no_event,event_occurs))$estimate
+  
+  
+  # "Survival\n")
+  
+  fit_surv <- survfit(Surv(t, status) ~ 1, data=m_df)
+  
+  if(fit_surv$time[length(fit_surv$time)] < t_end) {
+    # all events occur till the end of study
+    survan <- 0
+  }else{
+    survan <- summary(fit_surv, times = 60)$surv
+  }
+  
+  
+  data.frame(
+    dropout_perc=dropout_perc,
+    theory=theory,
+    simple=simple,
+    survan=survan
+    )
+}
+surv_dist <- df %>% group_by(run_id) %>% do(dropout_calc(.))
+head(surv_dist)
+```
+
+```{r}
+surv_dist %>% tidyr::gather(key = "key", value = "value",-run_id, -dropout_perc,-theory) %>%
+  ggplot(aes(x=value))+facet_wrap(~key,ncol=1)+geom_histogram()+geom_vline(xintercept=surv_dist$theory[1])
+```
+
+
+```{r}
+# number of simulations
+n_sim <- 1000
+# number of subjects
+n <- 200
+# number of possible droup out
+n_d <- as.integer(0.7*n)
+# end of study
+t_end <- 60
+# event distribution
+shape <-4
+scale <- 10
+
+df <- gen_all_samples(n_sim, n,n_d,t_end=60, shape=4, scale=10)
+
+surv_dist <- df %>% group_by(run_id) %>% do(dropout_calc(.))
+
+surv_dist %>% tidyr::gather(key = "key", value = "value",-run_id, -dropout_perc,-theory) %>%
+  ggplot(aes(x=value))+facet_wrap(~key,ncol=1)+geom_histogram()+geom_vline(xintercept=surv_dist$theory[1])
+```

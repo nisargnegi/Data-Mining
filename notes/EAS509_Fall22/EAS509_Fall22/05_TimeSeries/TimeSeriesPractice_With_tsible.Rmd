@@ -1,0 +1,333 @@
+---
+title: "Time Series Modeling. Practice with_tsible"
+author: "Author"
+date: "2022-11-06"
+output: html_document
+---
+
+
+```{r setup, warning=F, message=F}
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+library(cowplot)
+```
+
+# Read from file
+
+```{r}
+df <- readr::read_csv("antidiabetic_drug_sales.csv",show_col_types = FALSE)
+head(df)
+```
+
+# Convert to tsible
+
+```{r}
+df %>% 
+  mutate(Month=yearmonth(Month)) %>% 
+  tsibble(index=Month) -> 
+  df
+head(df)
+```
+
+```
+other helpful function for time to index conversion
+Frequency	Function
+
+Annual  	start:end
+Quarterly	yearquarter()
+Monthly   yearmonth()
+Weekly    yearweek()
+Daily	    as_date(), ymd()
+Sub-daily	as_datetime()
+```
+
+# Plotting
+
+
+```{r}
+# Split to train and test (whole = train + test)
+df_whole <- df
+df <- df %>% filter(Month < yearmonth("2005-01"))
+```
+
+```{r}
+# plot
+autoplot(df,Cost)
+```
+
+
+
+
+
+Seasonal plot
+```{r, echo=TRUE, dependson="a10", fig.height=3.3}
+df %>% gg_season(Cost, labels = "both") +
+  labs(y = "$ million", title = "Seasonal plot: antidiabetic drug sales")
+```
+
+
+Seasonal subseries plots
+
+```{r}
+df %>%
+  gg_subseries(Cost) +
+  labs(y = "$ million", title = "Subseries plot: antidiabetic drug sales")
+```
+```{r}
+# ACF(df, Cost) %>% autoplot()
+# PACF(df, Cost) %>% autoplot()
+gg_tsdisplay(df, Cost, plot_type='partial')
+```
+
+# Trend-Cycle / Season decomposition
+
+```
+classical_decomposition(formula, type = c("additive", "multiplicative"), ...)
+STL(formula, iterations = 2, ...)
+    ... - stata:stl options
+```
+
+```{r}
+df %>% model(classical_decomposition(Cost, type='m')) %>% components() %>% autoplot()
+```
+
+Transformation?
+
+```{r}
+df %>% model(classical_decomposition(log(Cost), type='m')) %>% components() %>% autoplot()
+```
+
+# Transformation
+
+```{r}
+# Auto Box-Cox
+# log if lambda is zero
+df %>% features(Cost, features = guerrero)
+```
+
+```{r}
+plot_grid(
+  autoplot(df,Cost),
+  autoplot(df,box_cox(Cost,0.272)),
+  autoplot(df,log(Cost)),
+  ncol=3)
+```
+
+
+# Simple models
+
+
+```{r}
+# fit
+fit <- df %>%
+  model(
+    Mean = MEAN(Cost),
+    Naive = NAIVE(Cost),
+    Seasonal_Naive = SNAIVE(Cost),
+    Drift = RW(Cost ~ drift())
+  )
+accuracy(fit)
+```
+
+```{r}
+# forecast next year (in training set)
+fc <- fit %>% forecast(h = 36)
+# plot forecasts and actual data
+fc %>% autoplot(df_whole,level = NULL)
+```
+
+```{r}
+# Calculate accuracy
+accuracy(fc,df_whole)
+```
+
+Confidence intervals?
+```{r}
+# forecast next year (in training set)
+fc <- fit %>% forecast(h = 36)
+#plot forecasts and actual data
+fc %>% autoplot(df_whole,level = 80)
+fc %>% autoplot(df_whole,level = 80) + facet_wrap(~.model)
+```
+
+```{r}
+gg_tsresiduals(fit %>% select(Drift))
+gg_tsresiduals(fit %>% select(Seasonal_Naive))
+```
+```{r}
+# lag=10 for non-seasonal data, 
+# lag=2m for seasonal data (where m is seasonal period).
+
+augment(fit) %>%  features(.resid, ljung_box, lag=24, dof=1)
+
+```
+
+May be need transform
+```{r}
+# fit
+fit <- df %>%
+  model(
+    Mean = MEAN(log(Cost)),
+    Naive = NAIVE(log(Cost)),
+    Seasonal_Naive = SNAIVE(log(Cost)),
+    Drift = RW(log(Cost) ~ drift())
+  )
+accuracy(fit)
+```
+
+```{r}
+# forecast next year (in training set)
+fc <- fit %>% forecast(h = 36)
+#plot forecasts and actual data
+fc %>% autoplot(df_whole,level = 80)
+fc %>% autoplot(df_whole,level = 80, point_forecast = lst(mean, median))
+fc %>% autoplot(df_whole,level = 80) + facet_wrap(~.model)
+```
+
+```{r}
+fc %>% hilo(Cost,level = 95) %>%
+  unpack_hilo(`95%`)
+```
+
+
+```{r}
+gg_tsresiduals(fit %>% select(Drift))
+gg_tsresiduals(fit %>% select(Seasonal_Naive))
+```
+
+```{r}
+# lag=10 for non-seasonal data, 
+# lag=2m for seasonal data (where m is seasonal period).
+
+augment(fit) %>%  features(.innov, ljung_box, lag=24, dof=1)
+
+```
+
+# EST
+```{r}
+df %>% model(STL(log(Cost))) %>% components() %>% autoplot()
+```
+
+```{r}
+fit <- df %>%
+  model(
+    ets_auto = ETS(log(Cost)),
+    ets = ETS(log(Cost) ~ error("A") + trend("A") + season("A"))
+  )
+accuracy(fit)
+report(fit)
+report(fit[1])
+
+fit <- fit %>% select(ets)
+
+fc <- fit %>% forecast(h = "3 years")
+```
+
+```{r}
+fc %>% autoplot(df_whole,level = 90)
+```
+
+```{r}
+accuracy(fc,df_whole)
+```
+```{r}
+gg_tsresiduals(fit)
+```
+
+```{r}
+# lag=10 for non-seasonal data, 
+# lag=2m for seasonal data (where m is seasonal period).
+
+augment(fit) %>%  features(.innov, ljung_box, lag=24, dof=17)
+
+```
+# ARIMA
+```{r}
+gg_tsdisplay(df, Cost, plot_type='partial')
+```
+
+```{r}
+# seasonal?
+gg_tsdisplay(df, difference(Cost), plot_type='partial')
+```
+```{r}
+df %>%
+features(Cost, unitroot_kpss)
+```
+
+```{r}
+df %>% features(Cost, unitroot_nsdiffs)
+df %>% features(log(Cost), unitroot_nsdiffs)
+```
+```{r}
+df %>% features( difference(log(Cost), lag=12), unitroot_ndiffs)
+```
+AR(p)
+* ACF dies out in an exponential or damped sine-wave manner
+* PACF has all zero spikes beyond the 𝑝th spike
+So we have an AR(p) model when
+* the ACF is exponentially decaying or sinusoidal
+* there is a significant spike at lag p in PACF, but none beyond p
+MA(q)
+* PACF dies out in an exponential or damped sine-wave manner
+* ACF has all zero spikes beyond the 𝑞th spike
+So we have an MA(q) model when
+* the PACF is exponentially decaying or sinusoidal
+* there is a significant spike at lag q in ACF, but none beyond q
+
+```{r}
+gg_tsdisplay(df, difference(log(Cost), lag=12), plot_type='partial')
+```
+p=3 q=3 and seasonal ar(1)
+
+```{r}
+fit <- df %>%
+  model(
+    arima_auto = ARIMA(log(Cost)),
+    arima = ARIMA(log(Cost)~0+pdq(3,0,3)+PDQ(1,1,0))
+  )
+accuracy(fit)
+report(fit[1])
+report(fit[2])
+
+fc <- fit %>% forecast(h = "3 year")
+```
+
+```{r}
+fc %>% autoplot(df_whole,level = 80)
+```
+
+```{r}
+accuracy(fc,df_whole)
+```
+
+```{r}
+gg_tsresiduals(fit %>% select(arima_auto))
+```
+
+```{r}
+# lag=10 for non-seasonal data, 
+# lag=2m for seasonal data (where m is seasonal period).
+
+augment(fit %>% select(arima_auto)) %>%  features(.innov, ljung_box, lag=24, dof=7)
+
+```

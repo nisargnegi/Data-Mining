@@ -1,0 +1,252 @@
+---
+title: "Homework 1"
+author: "Nisarg Negi"
+date: '2022-09-20'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, results="hide", warning=F, message=F}
+library(data.table)
+library(dplyr)
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(lubridate)
+```
+
+
+In this homework you should use plotly unless said otherwise.
+
+To create pdf version of your homework, knit it first to html and then print it to pdf. 
+Interactive plotly plots can be difficult sometimes to convert to static images suitable 
+for insertion to LaTex documents (that is knitting to PDF).
+
+Look for questions in R-chunks as comments and plain text (they are prefixed as Q<number>.<number>).
+
+# Part 1. Iris Dataset. (20 points)
+
+> "The Iris flower data set or Fisher's Iris data set is a multivariate data set 
+> introduced by the British statistician and biologist Ronald Fisher in his 1936 
+> paper The use of multiple measurements in taxonomic problems as an example of 
+> linear discriminant analysis" <https://en.wikipedia.org/wiki/Iris_flower_data_set>
+
+
+```{r}
+# Q1.1. Read the iris.csv file  (2 points)
+# hint: use fread from data.table, it is significantly faster than default methods
+#       be sure to have strings as factors (see stringsAsFactors argument)
+df <- fread("iris.csv",stringsAsFactors=TRUE)
+
+```
+
+
+```{r}
+# Q1.2. Show some values from data frame (2 points)
+head(df,6)
+```
+
+
+```{r}
+# Q1.3. Build histogram plot for Sepal.Length variable for each species using plot_ly 
+# (use color argument for grouping) (2 points)
+# should be one plot
+plot_ly(df, x = ~Sepal.Length, color = ~Species, colors = "Dark2", type="histogram")
+
+```
+
+```{r}
+# Q1.4. Repeat previous plot with ggplot2 and convert it to plotly with ggplotly (2 points)
+p <- ggplot(df, aes(x = Sepal.Length)) + geom_histogram(bins = 8,position = "dodge",aes(fill = Species))
+ggplotly(p)
+
+```
+
+```{r}
+# Q1.5. Create facet 2 by 2 plot with histograms similar to previous but for each metric
+# (2 points)
+# hint:
+#   following conversion to long format can be useful:
+#   iris %>% gather(key = "metric", value = "value",-Species)
+#
+
+iris_gathered <- gather(df, metric, value, -Species)
+iris_gathered
+
+iris_facet <- ggplot(iris_gathered, aes(value, fill = Species))+ geom_histogram(position = "dodge") +facet_wrap(~ metric)
+ggplotly(iris_facet)
+```
+
+Q1.6. Which metrics has best species separations? (2 points)
+
+Petal Length and Petal Width are the best for species separation as they segregate the data best.
+
+```{r}
+# Q1.7. Repeat above plot but using box plot (2 points)
+plot_ly(data = iris_gathered, x = ~value, y = ~interaction(Species,metric), color = ~Species, type = "box")
+```
+
+
+```{r}
+# Q1.8. Choose two metrics which separates species the most and use it to make scatter plot
+# color points by species (2 points)
+plot_ly(data = df, x = ~Petal.Length, y = ~Petal.Width, color = ~Species, type = "scatter")
+
+```
+
+
+
+```{r}
+# Q1.9. Choose three metrics which separates species the most and use it to make 3d plot
+# color points by species (2 points)
+plot_ly(data = df, x = ~Petal.Length, y = ~Petal.Width, z= ~Sepal.Length, color = ~Species)
+
+```
+
+
+Q1.10. Comment on species separation (2 points):
+The feature that seperates the species best are Petal Length and Petal Width.
+Among the three species, Setosa is the most seperated based, while Virginica & versicolor are pretty similar in some edge cases.
+Virginica has the Longest Sepal & Petal & thickest Petals meanwhile Setosa is short and all the three parameters.
+Versicolor lies in the middle and all these three parameters. 
+
+
+
+# Part 2. Covid-19 Dataset. (18 points)
+
+Download [us-states.csv](https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv)
+(there is also a copy in homework assignment)
+from <https://github.com/nytimes/covid-19-data/>. 
+[README.md](https://github.com/nytimes/covid-19-data/blob/master/README.md) 
+for details on file content.
+
+```{r}
+# Q2.1. Read us-states.csv (2 points)
+
+us <- fread("us-states.csv",stringsAsFactors=TRUE)
+```
+
+```{r}
+# Q2.2. Show some values from dataframe 
+head(us,6)
+```
+
+```{r}
+# Q2.3. Create new dataframe with new cases per month for each state (2 points)
+# hint:
+#    is cases column cumulative or not cumulative?
+
+us$year <- year(ymd(us$date))
+us$month <- month(ymd(us$date)) 
+us$day <- day(ymd(us$date))
+df$date <- as.POSIXct( df$date, format="%Y/%m/%d" )
+us_grp_state <- us %>% group_by(state,year,month)  %>%
+                    summarise(date = max(date),fips = max(fips),cases = max(cases), deaths = max(deaths))
+
+ 
+
+final_us_state <- us_grp_state %>% group_by(state) %>% mutate(lag = shift(cases, 1, 0, type="lag"), cases, total_cases_month = (cases - lag) )
+
+final_us_state
+```
+
+```{r}
+# Q2.4.Using previous dataframe plot new monthly cases in states, group by states
+# The resulting plot is busy, use interactive plotly capabilities to limit number 
+# of displayed states
+# (2 points)
+plot_ly(data = final_us_state, x = ~date , y = ~total_cases_month , color = ~state, type = 'scatter', mode = "line")%>%
+  layout(xaxis = list(title = 'year_month'),
+         yaxis = list(title = 'cases')
+         )
+
+```
+
+```{r}
+# Q2.5.Plot new monthly cases only in NY state 
+# (2 points)
+new_york_state <- final_us_state %>% filter(state == "New York")
+plot_ly(data = new_york_state , x = ~date , y = ~total_cases_month, type = "scatter")%>%
+  layout(xaxis = list(title = 'year_month'),
+         yaxis = list(title = 'cases')
+         )
+```
+
+```{r}
+# Q2.6. Found the year-month with highest cases in NY state 
+# (2 points)
+max_cases_new_york <- new_york_state %>% group_by(state) %>% slice(which.max(total_cases_month)) 
+max_cases_new_york_final <- max_cases_new_york %>% select(-year,-month,-lag)
+  
+max_cases_new_york_final
+```
+
+```{r}
+# Q2.7. Plot new cases in determined above year-month
+# using USA state map, color each state by number of cases  (2 points)
+# hint:
+#   there two build in constants in R: state.abb and state.name
+#   to convert full name to abbreviation
+us_state_jan_2022 <- final_us_state %>% filter( year == 2022,month == 1)
+
+us_state_jan_2022 <- us_state_jan_2022 %>% mutate(code = state.abb[match(state,state.name)])
+
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  lakecolor = toRGB('white')
+)
+
+plot_geo() %>%
+  add_trace(
+    z = ~us_state_jan_2022$total_cases_month, text=us_state_jan_2022$state, span = I(0),
+    locations=us_state_jan_2022$code, locationmode = 'USA-states'
+  ) %>%
+  layout(geo = g) %>%
+  colorbar(title = "cases")
+
+
+
+
+```
+
+
+```{r}
+# Q2.8. Add animation capability (2 points)
+# hint:
+#     for variable frame you need either integer or character/factorial so 
+#     convert date to character or factorial
+#final_us_state <- final_us_state %>% mutate(date = format(date, "%Y-%m"))
+                                            
+anim <- final_us_state %>% mutate(date = format(as.character((date))), code = state.abb[match(state,state.name)])
+
+
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  lakecolor = toRGB('white')
+)
+anim
+plot_geo() %>%
+  add_trace(
+    z = ~anim$total_cases_month, text=anim$state, span = I(0),
+    locations=anim$code, locationmode = 'USA-states',frame = ~anim$date
+  ) %>%
+  layout(geo = g) %>%
+  colorbar(title = "cases")%>%
+  animation_slider(
+    currentvalue = list(prefix = "date: ")
+  )
+```
+
+
+Q2.9. Compare animated plot from Q2.8 to plots from Q2.4/Q2.5 
+(When you would prefer one or another?) (2 points)
+
+The animated plot is more user friendly and provides better access to the time series data hence I would prefer it. 
+The plot in Q2.4 is useful for studying the pattern across USA. It will be useful if we want to study a pattern in USA but otherwise in a general scenario I would prefer the animated graph.
+The plot in Q2.5 is limited and shows only one state, New York. It will be useful if we want to study a pattern only in New York but otherwise in a general scenario I would prefer the animated graph.
+
+

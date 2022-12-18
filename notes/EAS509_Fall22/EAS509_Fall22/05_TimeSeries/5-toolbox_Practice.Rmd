@@ -1,0 +1,421 @@
+---
+title: "Ch5. The forecasters' toolbox. Practice."
+
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup, warning=F, message=F}
+
+
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+
+library(fpp3)
+```
+
+
+There are multiple libraries loaded and to make life easier here are
+some associations between used function and library name:
+
+"Regular" tydiverce
+ * dplyr
+   * pull=$
+ * tidyr
+   * pivot_longer - Pivot data from wide to long
+ * generics
+   * augment - Augment data with information from an object
+
+Time-Series tydiverce
+
+ * tsibble - tidy temporal data frames and tools
+   * index_by - set time index
+   * stretch_tsibble Perform stretching windows on a tsibble by row
+ * fable - forecast table
+   * SNAIVE, NAIVE, RW, MEAN - simple models
+ * fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+   * autoplot - also ggplot2 and feasts depending on object
+   * autolayer - also ggplot2 and feasts depending on object
+   * features - Extract features from a dataset
+   * model - Estimate models
+   * forecast - Produce forecasts
+   * features - Extract features from a dataset
+   * accuracy
+ * feasts - Feature Extraction and Statistics for Time Series in tsibble format
+   * autoplot - also ggplot2 and feasts depending on object
+   * autolayer - also ggplot2 and feasts depending on object
+   * guerrero - Guerrero's method for Box Cox lambda selection
+   * STL - Multiple seasonal decomposition by Loess
+   * gg_subseries
+   * ljung_box - Portmanteau tests
+ * distributional (used by ) distributional: Vectorised Probability Distributions
+   * hilo - Compute intervals
+   
+ 
+
+
+```{r}
+## ---- GDP ----------------------------------------------------------------
+
+gdppc <- global_economy %>%
+  mutate(GDP_per_capita = GDP / Population) %>%
+  select(Year, Country, GDP, Population, GDP_per_capita)
+gdppc
+```
+
+```{r}
+gdppc %>%
+  filter(Country == "Sweden") %>%
+  autoplot(GDP_per_capita) +
+  labs(title = "GDP per capita for Sweden", y = "$US")
+```
+
+```{r}
+# That is linear model we'll talk about it in next lecture
+# model:
+#   TSLM() (time series linear model), 
+#   the response variable is GDP_per_capita
+#   it is being modelled using trend() (a “special” function specifying a linear trend when it is used within TSLM())
+fit <- gdppc %>%
+  model(trend_model = TSLM(GDP_per_capita ~ trend()))
+
+fc <- fit %>% forecast(h = "3 years")
+
+fc %>%
+  filter(Country == "Sweden") %>%
+  autoplot(gdppc) +
+  labs(title = "GDP per capita for Sweden", y = "$US")
+```
+# Simple Forecasting
+```{r}
+## ---- Bricks ------------------------------------------------------------
+
+brick_fit <- aus_production %>%
+  filter(!is.na(Bricks)) %>%
+  model(
+    Seasonal_naive = SNAIVE(Bricks),
+    Naive = NAIVE(Bricks),
+    Drift = RW(Bricks ~ drift()),
+    Mean = MEAN(Bricks)
+  )
+```
+
+```{r}
+brick_fc <- brick_fit %>%
+  forecast(h = "5 years")
+```
+
+```{r}
+brick_fc %>%
+  filter(.model == "Seasonal_naive") %>%
+  autoplot(aus_production)
+```
+
+```{r}
+z <- brick_fc %>%
+  hilo(level = 95) %>%
+  pull(`95%`)
+z$lower
+
+brick_fc %>%
+  autoplot(aus_production, level = NULL) +
+  labs(
+    title = "Clay brick production for Australia",
+    y = "Millions of bricks"
+  ) +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+```{r}
+## ---- Facebook -------------------------------------------------------------------
+
+# Extract training data
+fb_stock <- gafa_stock %>%
+  filter(Symbol == "FB") %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE)
+
+fb_stock %>% autoplot(Close) +
+  labs(
+    title = "Facebook closing stock price",
+    y = "$US"
+  )
+```
+
+```{r}
+# Specify, estimate and forecast
+fb_stock %>%
+  model(
+    Mean = MEAN(Close),
+    Naive = NAIVE(Close),
+    Drift = RW(Close ~ drift())
+  ) %>%
+  forecast(h = 42) %>%
+  autoplot(fb_stock, level = NULL) +
+  labs(
+    title = "Facebook closing stock price",
+    y = "$US"
+  ) +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+```{r}
+fit <- fb_stock %>% model(NAIVE(Close))
+```
+
+```{r}
+augment(fit) %>%
+  filter(trading_day > 1100) %>%
+  ggplot(aes(x = trading_day)) +
+  geom_line(aes(y = Close, colour = "Data")) +
+  geom_line(aes(y = .fitted, colour = "Fitted"))
+```
+
+```{r}
+augment(fit) %>%
+  autoplot(.resid) +
+  labs(
+    y = "$US",
+    title = "Residuals from naïve method"
+  )
+```
+
+```{r}
+augment(fit) %>%
+  ggplot(aes(x = .resid)) +
+  geom_histogram(bins = 150) +
+  labs(title = "Histogram of residuals")
+```
+
+```{r}
+augment(fit) %>%
+  ACF(.resid) %>%
+  autoplot() +
+  labs(title = "ACF of residuals")
+```
+
+```{r}
+gg_tsresiduals(fit)
+```
+
+```{r}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 10, dof = 0)
+
+fc <- fb_stock %>%
+  model(
+    Mean = MEAN(Close),
+    Naive = NAIVE(Close),
+    Drift = RW(Close ~ drift())
+  ) %>%
+  forecast(h = 42)
+```
+
+```{r}
+## EGG PRICES
+
+eggs <- prices %>%
+  filter(!is.na(eggs)) %>%
+  select(eggs)
+```
+
+```{r}
+eggs %>%
+  autoplot(log(eggs)) +
+  labs(
+    title = "Annual egg prices",
+    y = "$US (adjusted for inflation)"
+  )
+```
+
+```{r}
+fit <- eggs %>%
+  model(rwdrift = RW(log(eggs) ~ drift()))
+fit
+```
+
+```{r}
+fc <- fit %>%
+  forecast(h = 50)
+fc
+```
+
+```{r}
+fc %>% autoplot(eggs) +
+  labs(
+    title = "Annual egg prices",
+    y = "US$ (adjusted for inflation)"
+  )
+```
+
+```{r}
+fc %>%
+  autoplot(eggs, level = 80, point_forecast = lst(mean, median)) +
+  labs(
+    title = "Annual egg prices",
+    y = "US$ (adjusted for inflation)"
+  )
+```
+
+```{r}
+
+## US RETAIL EMPLOYMENT
+
+us_retail_employment <- us_employment %>%
+  filter(year(Month) >= 1990, Title == "Retail Trade") %>%
+  select(-Series_ID)
+```
+
+```{r}
+us_retail_employment %>%
+  autoplot(Employed)
+```
+
+```{r}
+dcmp <- us_retail_employment %>%
+  model(STL(Employed)) %>%
+  components()
+```
+
+```{r}
+autoplot(dcmp)
+```
+
+```{r}
+dcmp <- dcmp %>% select(-.model)
+dcmp %>% autoplot(season_adjust)
+```
+
+```{r}
+dcmp %>%
+  model(NAIVE(season_adjust)) %>%
+  forecast() %>%
+  autoplot(dcmp) +
+  labs(title = "Naive forecasts of seasonally adjusted data")
+```
+
+```{r}
+dcmp %>% autoplot(season_year)
+```
+
+```{r}
+dcmp %>%
+  model(SNAIVE(season_year)) %>%
+  forecast() %>%
+  autoplot(dcmp) +
+  labs(title = "Seasonal naive forecasts of seasonal component")
+```
+
+```{r}
+us_retail_employment %>%
+  model(stlf = decomposition_model(
+    STL(Employed),
+    NAIVE(season_adjust),
+    SNAIVE(season_year)
+  )) %>%
+  forecast() %>%
+  autoplot(us_retail_employment)
+```
+
+# Accuracy
+```{r}
+## BEER PRODUCTION
+
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+```
+
+```{r}
+recent_production %>% autoplot(Beer)
+```
+
+```{r}
+train <- recent_production %>%
+  filter(year(Quarter) <= 2007)
+```
+
+```{r}
+beer_fit <- train %>%
+  model(
+    Mean = MEAN(Beer),
+    Naive = NAIVE(Beer),
+    Seasonal_naive = SNAIVE(Beer),
+    Drift = RW(Beer ~ drift())
+  )
+```
+
+```{r}
+beer_fc <- beer_fit %>%
+  forecast(h = 10)
+```
+
+```{r}
+accuracy(beer_fc, recent_production)
+```
+
+```{r}
+accuracy(beer_fit)
+```
+
+# CROSS-VALIDATION
+
+```{r}
+## CROSS-VALIDATION: FACEBOOK
+
+fb_stock <- gafa_stock %>%
+  filter(Symbol == "FB") %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE)
+```
+
+```{r}
+fb_stock %>%
+  autoplot(Close)
+```
+
+```{r}
+fb_stretch <- fb_stock %>%
+  stretch_tsibble(.init = 3, .step = 1) %>%
+  filter(.id != max(.id))
+```
+
+```{r}
+fit_cv <- fb_stretch %>%
+  model(RW(Close ~ drift()))
+```
+
+```{r}
+fc_cv <- fit_cv %>%
+  forecast(h = 1)
+```
+
+```{r}
+fc_cv %>% accuracy(fb_stock)
+```
+
+```{r}
+fb_stock %>%
+  model(RW(Close ~ drift())) %>%
+  accuracy()
+```

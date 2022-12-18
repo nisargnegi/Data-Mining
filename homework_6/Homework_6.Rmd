@@ -1,0 +1,165 @@
+---
+title: "EAS509 Homework 6 (100 points). Key"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+
+library(changepoint)
+
+```
+
+Submit your answers as a single pdf attach all R code. Failure to do so will result in grade reduction.
+
+# Question 1 (100 points)
+
+High-Performance Computing (HPC) resources (a.k.a. supercomputers) are complex systems. 
+Slight changes in hardware or software can drastically affect their performance. 
+For example, a corrupted lookup table in a network switch, an update of a linux 
+kernel, a drop of hardware support in a new software version, and so on. 
+
+One way to ensure the top performance of HPC resources is to utilize continuous 
+performance monitoring where the same application is executed with the same input 
+on a regular basis (for example, daily). In a perfect world, the execution time 
+will be exactly the same, but in reality, it varies due to system jitter 
+(this is partially due to system processes taking resources to do their jobs).
+
+So normally, the execution time will be distributed around a certain value. 
+If performance degradation occurs, the execution time will be distributed around different value.
+
+An automated system that inform system administrators on performance change can be a very handy tool.
+
+In this exercise, your task will be to identify the number and location of the change point where performance was changed. NWChem, an Quantum Chemistry application, was used to probe the performance of UB HPC cluster.
+
+
+1.1 `UBHPC_8cores_NWChem_Wall_Clock_Time.csv` file contains execution time (same as run time or wall time) of NWChem performing same reference calculation. Read the file and plot it run time on date. (10 points)
+
+
+```{r}
+df <- read.csv('UBHPC_8cores_NWChem_Wall_Clock_Time.csv')
+df$date <- as.POSIXct(df$date, format = "%d/%m/%Y %H:%M")
+df$date <- as.Date(df$date)
+
+dfts = ts(df$run_time, frequency = 12)
+ts.plot(dfts)
+```
+
+```{r}
+#mean changepoint analysis
+mvalue = cpt.mean(as.vector(scale(dfts)), method='PELT')
+cpts(mvalue)
+plot(mvalue)
+summary(mvalue)
+```
+
+```{r}
+# variance changepoint analysis
+vnvalue = cpt.var(diff(as.vector(scale(dfts))), method='PELT')
+cpts(vnvalue)
+plot(vnvalue)
+summary(vnvalue)
+
+```
+
+
+
+
+1.2 How many segments/change points can you eyeball? What are they? (10 points)
+
+Usinf cpt mean: 5 changepoints 6, 7, 66, 176
+Usinf cpt var: 2 changepoints 48, 176, 225, 269 
+
+
+
+
+1.3 Create another column `seg` and assign segment number to it based on previous question. (10 points)
+
+```{r}
+seg_data = df %>% mutate(segement = row_number()) %>% mutate(seg = ifelse(row_number() < 6, 1,
+																		ifelse(row_number() %in% 6:7, 2,
+																			ifelse(row_number() %in% 7:66, 3,
+																				ifelse(row_number() %in% 66:176, 4,
+																				       5)))))
+
+head(seg_data)
+
+```
+
+
+
+1.4 Make a histagramm plot of all run times. (10 points)
+
+```{r}
+ggplot(seg_data, aes(x =run_time)) + geom_histogram()+ geom_density(aes(y=..count..))
+
+```
+
+1.5 Make a histogram plot of for each segments. (10 points)
+  
+
+```{r}
+ggplot(seg_data, aes(x=seg))+geom_histogram(binwidth=1)+geom_density(aes(y=..count..))
+```
+1.6 Does it look reasonably normal? (10 points)
+
+From figure 1.4, we can tell that it is a right skewed but a reasonably normal curve.
+
+
+
+1.7 Identify change points with `cpt.meanvar` function. Use `PELT` method and `Normal` for `test.stat`. Plot your data with identified segments mean.  (10 points)
+```{r}
+set.seed(49)
+df_meanvar = cpt.meanvar(df$run_time, test.stat='Normal', method='PELT',penalty = 'SIC')
+
+cpts(df_meanvar)
+pen.value(df_meanvar)
+plot(df_meanvar)
+
+```
+
+> hints:
+> run `cpt.meanvar` on the `run_time` column (i.e. `df$run_time`)
+>
+> use `pen.value` funtion to see current value of penalty (MBIC value),
+> use that value as guide for your penalty range in next question.
+> 
+
+
+1.8 Using CROPS procedure find optimal number of points. Plot data with optimal number of segments. (10 points)
+
+```{r}
+df_meanvar_crops = cpt.meanvar(df$run_time, method="PELT", penalty="CROPS",
+                 pen.value=c(0, pen.value(df_meanvar)))
+
+plot(df_meanvar_crops, diagnostic=TRUE)
+plot(df_meanvar_crops,ncpts=21)
+```
+
+1.9 Does your initial segment guess matches with optimized by CROPS? (10 points)
+
+Our guess was 5 with mean and 20 using mean var. Our guess matches with the one optimized with CROPS
+
+
+
+1.10 The run-time in this example does not really follow normal distribution. 
+What to do you think can we still use this method to identify changepoints? (10 points)
+
+PS. Just in case if you wounder. On 2018-02-21 system got a critical linux kernel update
+to alleviate Meltdown-Spectre vulnerabilities. On 2018-06-28 system got another
+kernel update which is more robust and hit the performance less
+
+
+Mean, var and meanvar assumes that the data is normalized. We need to normalize the data by differencing it such that the mean fits over x axis(mean =0) and the variance is 1.
+
+
+

@@ -1,0 +1,377 @@
+---
+title: 'Interactive Data Visualization with plotly in R '
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    css: doc.css
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used libraries
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+# R package DT provides an R interface to the JavaScript library DataTables.
+if (!require("DT")) install.packages("DT")
+# geom_mark_hull
+if (!require("concaveman")) install.packages("concaveman")
+if (!require("ggforce")) install.packages("ggforce")
+
+
+# more libraries
+if (!require("listviewer")) install.packages("listviewer")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("forcats")) install.packages("forcats")
+if (!require("maps")) install.packages("maps")
+if (!require("mvtnorm")) install.packages("mvtnorm")
+if (!require("gapminder")) install.packages("gapminder")
+if (!require("hexbin")) install.packages("hexbin")
+if (!require("Hmisc")) install.packages("Hmisc")
+if (!require("leaflet")) install.packages("leaflet")
+
+if (!require("plotlyBook")) install.packages("plotlyBook")
+
+```
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(ggplot2)
+library(plotly)
+library(ggforce)
+library(dplyr)
+library(lubridate)
+```
+
+# plotly - Documentation
+
+* Documentation:
+  * [https://plotly.com/r/](https://plotly.com/r/)
+* Book:
+  * Interactive web-based data visualization with R, plotly, and shiny
+by Carson Sievert [https://plotly-r.com/](https://plotly-r.com/)
+
+This document is essentially a brief notes of the book above.
+
+# Linking Multiple Views - Client Side Linking
+
+
+
+* Several high level R libraries provides highlevel interface for JavaScript/html UI.
+  * `htmltools` - Tools for creating, manipulating, and writing HTML from R.
+  * `htmlwidget` (on top `htmltools`) provides a framework for easily creating 
+    R bindings to JavaScript libraries. Widgets created using the framework can be:
+    * Used at the R console for data analysis just like conventional R plots (via RStudio Viewer)
+    * Seamlessly embedded within R Markdown documents and Shiny web applications.
+    * Saved as standalone web pages for ad-hoc sharing via email, Dropbox, etc.
+  * `crosstalk` - provides building blocks for allowing HTML widgets to communicate 
+     with each other, with Shiny or without (i.e. static .html files).
+  * `shiny` - Web Application Framework for R, Makes it incredibly easy to 
+     build interactive web applications with R
+  * `plotly` - interactive data visualization
+  * other htmlwidgets: `DT`, `leaflet`, ...
+    * `DT` - dataframe visualization
+    * `leaflet` - geo maps
+
+  
+Client Side Linking means that (built-in) Browser handle all output/interactions using JavaScript/html tech.
+
+## plotly’s framework for highlight events
+
+* A highlight event dims the opacity of existing marks, then adds an additional graphical layer representing the selection.
+
+
+Two components for highlighting:
+
+* `highlight_key`() function - set the selection option for higlight
+  * specify selection variable through formula.
+* `highlight`()  this section shows you how to control how queries are triggered and visually rendered via the highlight() function."""
+  * Some impotent arguments:
+    * `on`/`off` - on which event to turn on/off highlighting, some possible events: "plotly_hover", "plotly_click", "plotly_doubleclick"
+    * `selectize` - turn on selectize.js powered dropdown widget
+    * `dynamic` - should a widget for changing selection colors be included (add `color`)
+    * `persistent` - should selections persist
+    
+```{r}
+library(plotly)
+head(mtcars)
+
+mtcars_key <- highlight_key(mtcars, ~cyl)
+  
+p <- plot_ly(mtcars_key,
+  x = ~wt, y = ~mpg, text = ~cyl, mode = "markers+text", 
+  textposition = "top", hoverinfo = "x+y"
+)
+highlight(p, on = "plotly_click", off = "plotly_doubleclick")
+```
+
+
+```{r}
+library(plotly)
+head(mtcars)
+mtcars %>%
+  highlight_key(~cyl) %>%
+  plot_ly(
+    x = ~wt, y = ~mpg, text = ~cyl, mode = "markers+text", 
+    textposition = "top", hoverinfo = "x+y"
+  ) %>%
+  highlight(on = "plotly_hover", off = "plotly_doubleclick")
+```
+```{r}
+# load the `txhousing` dataset
+data(txhousing, package = "ggplot2")
+
+highlight_key(txhousing, ~city) %>% # declare `city` as highlight key
+  plot_ly(color = I("black")) %>% 
+  group_by(city) %>%
+  add_lines(x = ~date, y = ~median)# create a time series of median house price
+```
+
+ As it turns out, plotly makes it easy to add a selectize.js powered dropdown widget for querying by name (aka indirect manipulation) by setting selectize = TRUE.
+ 
+ 
+
+```{r}
+highlight_key(txhousing, ~city) %>% # declare `city` as highlight key
+  plot_ly(color = I("black")) %>% 
+  group_by(city) %>%
+  add_lines(x = ~date, y = ~median) %>%# create a time series of median house price
+  highlight(
+    on = "plotly_click", 
+    selectize = TRUE, 
+    dynamic = TRUE, 
+    persistent = TRUE
+  )
+```
+
+
+```{r}
+
+# remember, `base` is a plotly object, but we can use dplyr verbs to
+# manipulate the input data 
+# (`txhousing` with `city` as a grouping and querying variable)
+
+base <- highlight_key(txhousing, ~city) %>% # declare `city` as highlight key
+  plot_ly(color = I("black")) %>% 
+  group_by(city)
+
+dot_plot <- base %>%
+  summarise(miss = sum(is.na(median))) %>%
+  filter(miss > 0) %>%
+  add_markers(
+    x = ~miss, 
+    y = ~forcats::fct_reorder(city, miss), 
+    hoverinfo = "x+y"
+  ) %>%
+  layout(
+    xaxis = list(title = "Number of months missing"),
+    yaxis = list(title = "")
+  ) 
+time_series <- base %>%
+  group_by(city) %>%
+  add_lines(x = ~date, y = ~median) 
+
+subplot(dot_plot, time_series, widths = c(.2, .8), titleX = TRUE) %>%
+  layout(showlegend = FALSE) %>%
+  highlight(on = "plotly_click", dynamic = TRUE, selectize = TRUE)
+```
+
+```{r}
+hist <- add_histogram(
+  base,
+  x = ~median, 
+  histnorm = "probability density"
+)
+subplot(time_series, hist, nrows = 2) %>%
+  layout(barmode = "overlay", showlegend = FALSE) %>%
+  highlight(
+    dynamic = TRUE, 
+    selectize = TRUE, 
+    selected = attrs_selected(opacity = 0.3)
+  )
+
+```
+
+Other htmlwidgets can be combined together
+
+
+```{r}
+library(plotly)
+
+m <- highlight_key(mpg)
+p <- ggplot(m, aes(displ, hwy)) + geom_point()
+gg <- highlight(ggplotly(p), "plotly_selected")
+
+# arrange widgets in columns (from crosstalk)
+crosstalk::bscols(gg, DT::datatable(m))
+```
+
+## plotly’s framework for filter events
+
+* A filter event completely remove existing marks and rescales axes to the remaining data.
+
+filter_select(),
+
+```{r}
+library(crosstalk)
+
+# highlight
+tx <- highlight_key(txhousing, ~city, "Select a city")
+gg <- ggplot(tx) + geom_line(aes(date, median, group = city))
+
+highlight_p <- highlight(
+  ggplotly(gg, tooltip = "city"), 
+  selectize = TRUE, persistent = TRUE
+)
+
+# filter
+
+# generally speaking, use a "unique" key for filter, 
+# especially when you have multiple filters!
+tx2 <- highlight_key(txhousing)
+gg2 <- ggplot(tx2) + geom_line(aes(date, median, group = city))
+
+# arrange widgets in columns (from crosstalk)
+filter_p <- bscols(
+  filter_select("id", "Select a city", tx2, ~city),
+  ggplotly(gg2, dynamicTicks = TRUE),
+  widths = c(12, 12)
+)
+
+
+
+# arrange widgets in columns (from crosstalk)
+bscols(highlight_p, filter_p)
+```
+
+```{r}
+
+library(crosstalk)
+
+tx <- highlight_key(txhousing)
+
+widgets <- bscols(
+  widths = c(12, 12, 12),
+  filter_select("city", "Cities", tx, ~city),
+  filter_slider("sales", "Sales", tx, ~sales),
+  filter_checkbox("year", "Years", tx, ~year, inline = TRUE)
+)
+bscols(
+  widths = c(4, 8), widgets, 
+  plot_ly(tx, x = ~date, y = ~median, showlegend = FALSE) %>% 
+    add_lines(color = ~city, colors = "black")
+)
+```
+
+ filter and highlight events can work in conjunction with various htmlwidgets. 
+ In fact, since the semantics of filter are more well-defined than highlight, 
+ linking filter events across htmlwidgets via crosstalk should generally be more well-supported.
+
+```{r}
+
+library(leaflet)
+
+eqs <- highlight_key(quakes)
+stations <- filter_slider(
+  "station", "Number of Stations", 
+  eqs, ~stations
+)
+
+p <- plot_ly(eqs, x = ~depth, y = ~mag) %>% 
+  add_markers(alpha = 0.5) %>% 
+  highlight("plotly_selected")
+
+map <- leaflet(eqs) %>% 
+  addTiles() %>% 
+  addCircles()
+
+bscols(
+  widths = c(6, 6, 3), 
+  p, map, stations
+)
+```
+
+```{r}
+library(gapminder)
+g <- highlight_key(gapminder, ~country)
+continent_filter <- filter_select(
+  "filter", "Select a country", 
+  g, ~continent
+)
+
+p <- plot_ly(g) %>%
+  group_by(country) %>%
+  add_lines(x = ~year, y = ~lifeExp, color = ~continent) %>%
+  layout(xaxis = list(title = "")) %>%
+  highlight(selected = attrs_selected(showlegend = FALSE))
+
+bscols(continent_filter, p, widths = 12)
+```
+# Animation
+
+```{r}
+g <- highlight_key(gapminder, ~continent)
+gg <- ggplot(g, aes(gdpPercap, lifeExp, 
+  color = continent, frame = year)) +
+  geom_point(aes(size = pop, ids = country)) +
+  geom_smooth(se = FALSE, method = "lm") +
+  scale_x_log10()
+highlight(ggplotly(gg), "plotly_click")
+
+```
+
+```{r}
+library(gapminder)
+
+# gapKey <- highlight_key(gap, ~country)
+gap <- gapminder %>% mutate(country=forcats::fct_reorder(as.character(country), pop)) # forcats::fct_reorder for factor reorder
+levels(gap$country)
+plot_ly(gap, y = ~factor(country), x = ~pop, hoverinfo = "x") %>%
+  add_markers(alpha = 0.1, color = I("black"))
+```
+
+```{r}
+gap <- gapminder %>% mutate(country=forcats::fct_reorder(as.character(country), pop)) 
+# forcats::fct_reorder for factor reorder
+
+gapKey <- highlight_key(gap, ~country)
+
+p1 <- plot_ly(gap, y = ~country, x = ~pop, hoverinfo = "text") %>%
+  add_markers(alpha = 0.1,text=paste(gap$country,gap$pop), color = I("black")) %>%
+  add_markers(
+    data = gapKey, 
+    frame = ~year, 
+    ids = ~country, 
+    text=paste(gap$country,gap$pop),
+    color = I("red")
+  ) %>%
+  layout(xaxis = list(type = "log"))
+
+p2 <- plot_ly(gap, x = ~gdpPercap, y = ~lifeExp, 
+              text = ~country, hoverinfo = "text") %>%
+  add_markers(color = I("black"), alpha = 0.1) %>%
+  add_markers(
+    data = gapKey, 
+    frame = ~year, 
+    ids = ~country, 
+    color = I("red")
+  ) %>%
+  layout(xaxis = list(type = "log"))
+
+subplot(p1, p2, nrows = 1, widths = c(0.3, 0.7), titleX = TRUE) %>%
+  hide_legend() %>%
+  animation_opts(1000, redraw = FALSE) %>%
+  layout(hovermode = "y", margin = list(l = 100)) %>%
+  highlight(
+    "plotly_selected", 
+    color = "blue", 
+    opacityDim = 1, 
+    hoverinfo = "none"
+  )
+```
+
+
+

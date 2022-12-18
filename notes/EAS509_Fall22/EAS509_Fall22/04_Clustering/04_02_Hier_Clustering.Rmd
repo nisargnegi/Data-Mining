@@ -1,0 +1,253 @@
+---
+title: "Ch12-unsup-lab"
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.11.2
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used new libraries
+if (!require("ISLR2")) install.packages("ISLR2")
+if (!require("cluster")) install.packages("cluster")
+if (!require("cowplot")) install.packages("cowplot")
+```
+
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(plotly)
+library(cluster)
+library(cowplot)
+```
+
+
+
+# Hierarchical Clustering
+
+The `hclust()` function implements  hierarchical clustering in `R`. In the following example we use the data from the previous lab to
+ plot the hierarchical clustering dendrogram using complete, single, and average linkage clustering, with  Euclidean distance as the dissimilarity measure.
+We begin by clustering observations using complete linkage. The `dist()` function is used to compute the $50 \times 50$ inter-observation Euclidean distance matrix.
+
+
+```{r}
+set.seed(2)
+x <- matrix(rnorm(50 * 2), ncol = 2)
+# shift the first 25 observations
+x[1:25, 1] <- x[1:25, 1] + 3
+x[1:25, 2] <- x[1:25, 2] - 4
+
+plot_ly(x=x[,1],y=x[,2])
+```
+
+```{r}
+x_dist <- dist(x)
+hc.complete <- hclust(dist(x), method = "complete")
+```
+
+We could just as easily perform hierarchical clustering with average or single linkage instead:
+
+```{r chunk35}
+hc.average <- hclust(dist(x), method = "average")
+hc.single <- hclust(dist(x), method = "single")
+```
+
+We can now plot the dendrograms obtained using the usual `plot()` function. The numbers at the bottom of the plot identify each observation.
+
+```{r chunk36}
+par(mfrow = c(1, 3))
+plot(hc.complete, main = "Complete Linkage",
+    xlab = "", sub = "", cex = .9)
+plot(hc.average, main = "Average Linkage",
+    xlab = "", sub = "", cex = .9)
+plot(hc.single, main = "Single Linkage",
+    xlab = "", sub = "", cex = .9)
+```
+
+
+To determine the cluster labels for each observation associated with a given cut of the dendrogram, we can use the `cutree()` function:
+
+```{r chunk37}
+cutree(hc.complete, 2)
+cutree(hc.average, 2)
+cutree(hc.single, 2)
+```
+
+The second argument to `cutree()` is the number of clusters we wish to obtain.
+For this data, complete and average linkage generally separate the observations into their correct groups. However, single linkage identifies one point as belonging to its own cluster. A more sensible answer is obtained when four clusters are selected, although there are still two singletons.
+
+```{r chunk38}
+cutree(hc.single, 4)
+```
+```{r chunk31}
+plot_ly(x=x[,1],y=x[,2], color = as.factor(cutree(hc.complete, 2)))
+```
+```{r}
+hc.complete
+```
+
+To scale the variables before performing hierarchical clustering of the observations, we use the `scale()` function:
+
+```{r chunk39}
+xsc <- scale(x)
+plot(hclust(dist(xsc), method = "complete"),
+    main = "Hierarchical Clustering with Scaled Features")
+```
+
+gap statistics
+```{r fig.width=5, fig.height=2.5}
+# wrapping hclust for clusGap
+hclusCut <- function(x, k, ...){
+   list(cluster = cutree(hclust(dist(x), ...), k=k))
+}
+
+gap_stat_df <- NULL
+Kmax <- 15L
+linkage_method <- c("single", "average", "complete")
+for(method in linkage_method){
+  gap <- clusGap(xsc, FUN = hclusCut, K.max = Kmax, B = 200, method = method)
+  gap_df <- data.frame(gap$Tab)
+  gap_df$k <- 1:Kmax
+  gap_df$linkage <- method
+  gap_stat_df <- rbind(gap_stat_df, gap_df)
+}
+gap_stat_df$linkage <- factor(gap_stat_df$linkage, level=linkage_method)
+#print(gap)
+#plot(gap)
+#data.frame(gap$Tab)
+plot_grid(
+  ggplot(gap_stat_df, aes(k,logW, color=linkage))+
+    geom_point()+
+    geom_line()+
+    geom_line(aes(x=k,y=E.logW), linetype = "dotted")+
+    scale_x_continuous(breaks=1:Kmax)+
+    theme(legend.position="bottom"),
+  ggplot(gap_stat_df, aes(k,gap, color=linkage))+
+    geom_point()+
+    geom_line()+
+    geom_errorbar(aes(ymin=gap-SE.sim, ymax=gap+SE.sim), width=1, position=position_dodge(.1)) +
+    scale_x_continuous(breaks=1:Kmax)+
+    theme(legend.position="bottom"),
+  labels = c("A", "B"),
+  ncol = 2L
+  )
+```
+
+Let's do Silhouette.
+```{r fig.width=9,fig.height=9}
+# cut the tree over a series of values k=
+results <- NULL
+par(mar = c(5, 2, 4, 2), mfrow=c(3,3))
+
+for (i in 2:4){
+  for(method in c("single", "average", "complete")){
+    d <- dist(xsc)
+    hc <- hclust(d, method=method)
+  	ct <- cutree(hc, k=i)
+  	si <- silhouette(ct, dist = d)
+    plot(si, main=method)
+  }
+}
+par(mar = c(1, 1, 1, 1), mfrow=c(1,1))
+```
+
+
+
+## Example: Correlation-based distance
+Correlation-based distance can be computed using the `as.dist()` function, which converts an arbitrary square symmetric matrix into a form that the `hclust()` function recognizes as a distance matrix. However, this only makes sense for data with at least three features since the absolute correlation between any two observations
+with measurements on two features is always 1. Hence, we will cluster a three-dimensional data set. This data set does not contain any true clusters.
+
+```{r chunk40}
+x <- matrix(rnorm(30 * 3), ncol = 3)
+dd <- as.dist(1 - cor(t(x)))
+plot(hclust(dd, method = "complete"),
+    main = "Complete Linkage with Correlation-Based Distance",
+    xlab = "", sub = "")
+```
+## Example: Simulated 2
+
+```{r}
+set.seed(12)
+r1 <- rnorm(n=80,mean=7,sd=0.5)
+angle1 <- runif(n=80,min=0,max=pi)+pi/2
+r2 <- rnorm(n=80,mean=7,sd=0.5)
+angle2 <- runif(n=80,min=pi,max=2*pi)+pi/2
+
+df_sim2 <- rbind(
+  data.frame(x=r1*cos(angle1)+1,y=r1*sin(angle1)+7/2,g='C1'),
+  data.frame(x=r2*cos(angle2)-1,y=r2*sin(angle2)-7/2,g='C2')
+)
+
+
+plot_ly(df_sim2,x=~x,y=~y,color=~g, colors=c("magenta","cyan")) %>% layout(yaxis=list(scaleanchor="x", scaleratio=1))
+#orca(scale=4,width=400,height=300)
+```
+
+```{r chunk36}
+
+
+x_dist <- dist(df_sim2[,1:2])
+hc.complete <- hclust(x_dist, method = "complete")
+hc.average <- hclust(x_dist, method = "average")
+hc.single <- hclust(x_dist, method = "single")
+
+
+par(mfrow = c(1, 3))
+plot(hc.complete, main = "Complete Linkage",
+    xlab = "", sub = "", cex = .9)
+plot(hc.average, main = "Average Linkage",
+    xlab = "", sub = "", cex = .9)
+plot(hc.single, main = "Single Linkage",
+    xlab = "", sub = "", cex = .9)
+```
+
+```{r chunk31}
+hc_average <- hclust(dist(df_sim2[,1:2]), method = "average")
+cutree_average <- cutree(hc_average, 2)
+plot_ly(x=df_sim2$x,y=df_sim2$y, color = as.factor(cutree_average), colors=c("red","blue"))
+```
+
+```{r chunk31}
+hc_single <- hclust(dist(df_sim2[,1:2]), method = "single")
+cutree_single <- cutree(hc_single, 2)
+plot_ly(x=df_sim2$x,y=df_sim2$y, color = as.factor(cutree_single), colors=c("red","blue"))
+```
+
+## Example: Iris
+
+```{r}
+head(iris)
+```
+
+```{r}
+# scale features
+iris_scaled <- scale(iris[-5])
+iris_scaled[1:3,]
+```
+```{r}
+iris_scaled_d <- dist(iris_scaled)
+iris_scaled_hc <- hclust(iris_scaled_d, method='complete')
+iris_scaled_ct <- cutree(iris_scaled_hc, k=3)
+```
+
+```{r}
+# lets us PC for visualization
+pr_out <- prcomp(iris_scaled, scale = TRUE)
+
+
+plot_ly(x=pr_out$x[,1],y=pr_out$x[,2], color = as.factor(iris_scaled_ct), colors=c("red","blue","green"))
+```
+
+
+```{r}
+plot_ly(x=pr_out$x[,1],y=pr_out$x[,2], color = iris$Species, colors=c("red","blue","green"))
+```
+
+

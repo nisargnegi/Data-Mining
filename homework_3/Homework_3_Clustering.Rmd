@@ -1,0 +1,413 @@
+---
+title: "Homework 3. Clustering practice"
+author: "Nisarg"
+date: '2022-10-10'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(cluster)
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(plotly)
+library(data.table)
+library(caret)
+library(ggbiplot)
+library(tidyr)
+library(cowplot)
+library(factoextra)
+library(NbClust)
+
+
+```
+
+
+
+# Part 1. USArrests Dataset and Hierarchical Clustering (20 Points)
+
+Consider the “USArrests” data. It is a built-in dataset you may directly get 
+in RStudio. Perform hierarchical clustering on the observations (states) and 
+answer the following questions.
+
+
+```{r}
+head(USArrests)
+```
+
+
+**Q1.1.** Using hierarchical clustering with complete linkage and Euclidean distance, 
+cluster the states. (5 points)
+
+
+```{r}
+set.seed(786)
+us_df_sc <- as.data.frame(USArrests)
+edist_mat <- dist(us_df_sc, method = 'euclidean')
+hclust_com <- hclust(edist_mat, method = 'complete')
+plot(hclust_com)
+
+
+```
+
+
+**Q1.2.** Cut the dendrogram at a height that results in three distinct clusters. 
+Interpret the clusters. Which states belong to which clusters? (5 points)
+
+
+
+```{r}
+plot(hclust_com)
+rect.hclust(hclust_com , k = 3, border = 2:6)
+abline(h = 3, col = 'red')
+
+
+```
+We were able to distinguish the data into three clusters as in the above 3 boxes, red, green and blue.
+States in:
+red cluster:Florida, North Carolina, Delaware, Alabama, Louisiana, Alaska, Mississippi, South Carolina, M
+aryland, Arizona, New Mexica, California, Illinois, New York, Michigan and Nevada.
+green cluster: Missouri, Arkansas, Tennessee, Georgia, Colorado, T
+exas, Rhode Island, Wyoming, Oregon, Oklahoma, Virginia, Washington, Massachusetts and New Je
+rsey
+blue cluster: Ohio, Utah, Connetcticut, Pennsyl
+vania, Nebraska, Kentucky, Montana, Idaho, Indiana, Kansas, Hawaii, Minnesota, Wiconsin, iow
+a, New Hampshire, West Virginia, Maine, South Dakota, North Dakota and Vermont
+```{r}
+
+```
+
+**Q1.3** Hierarchically cluster the states using complete linkage and Euclidean 
+distance, after scaling the variables to have standard deviation one. (5 points)
+
+```{r}
+us_df_sc <- as.data.frame(scale(USArrests))
+edist_mat <- dist(us_df_sc, method = 'euclidean')
+hclust_com <- hclust(edist_mat, method = 'complete')
+plot(hclust_com)
+
+```
+```{r}
+summary(USArrests)
+```
+
+```{r}
+summary(scale(USArrests))
+```
+
+
+**Q1.4** What effect does scaling the variables have on the hierarchical 
+clustering obtained? In your opinion, should the variables be scaled before 
+the inter-observation dissimilarities are computed? Provide a justification 
+for your answer. *(5 points)*
+
+
+*Answer:*...
+Scaling affected the cluster such that the states in clusters after scaling are very different from the states present before scaling.We can see for example in the summary the minimum and maximum of murder and assult drastically changed after scaling. We can see that Assult dominates over murder in our data and scaling the values bring the features to a more comparable range.
+
+
+
+# Part 2. Market Segmentation (80 Points)
+
+An advertisement division of large club store needs to perform customer analysis 
+the store customers in order to create a segmentation for more targeted marketing campaign 
+
+You task is to identify similar customers and characterize them (at least some of them). 
+In other word perform clustering and identify customers segmentation.
+
+This data-set is derived from https://www.kaggle.com/imakash3011/customer-personality-analysis
+
+```
+Colomns description:
+People
+  ID: Customer's unique identifier
+  Year_Birth: Customer's birth year
+  Education: Customer's education level
+  Marital_Status: Customer's marital status
+  Income: Customer's yearly household income
+  Kidhome: Number of children in customer's household
+  Teenhome: Number of teenagers in customer's household
+  Dt_Customer: Date of customer's enrollment with the company
+  Recency: Number of days since customer's last purchase
+  Complain: 1 if the customer complained in the last 2 years, 0 otherwise
+
+Products
+
+  MntWines: Amount spent on wine in last 2 years
+  MntFruits: Amount spent on fruits in last 2 years
+  MntMeatProducts: Amount spent on meat in last 2 years
+  MntFishProducts: Amount spent on fish in last 2 years
+  MntSweetProducts: Amount spent on sweets in last 2 years
+  MntGoldProds: Amount spent on gold in last 2 years
+
+Place
+  NumWebPurchases: Number of purchases made through the company’s website
+  NumStorePurchases: Number of purchases made directly in stores
+```
+
+Assume that data was current on 2014-07-01
+
+**Q2.1.** Read Dataset and Data Conversion to Proper Data Format *(12 points)*
+
+Read "m_marketing_campaign.csv" using `data.table::fread` command, examine the data.
+
+
+```{r}
+# fread m_marketing_campaign.csv and save it as df
+df = fread("m_marketing_campaign.csv",stringsAsFactors = FALSE)
+
+print(c("na values:",sum(is.na(df))))
+print(c("null values:",sum(is.null(df))))
+
+head(df)
+summary(df)
+
+
+
+```
+
+
+
+
+```{r}
+# Convert Year_Birth to Age (assume that current date is 2014-07-01)
+
+df$Age = as.integer(2014 - df$Year_Birth)
+present_date = as.Date("2014-07-01",format="%Y-%m-%d")
+
+
+# Dt_Customer is a date (it is still character), convert it to membership days (name it MembershipDays)
+# hint: note European date format, use as.Date with proper format argument
+
+df$Dt_Customer = as.Date(df$Dt_Customer,format="%d-%m-%Y")
+df$MembershipDays = as.numeric(difftime(present_date, df$Dt_Customer, "day")) 
+
+head(df)
+
+```
+
+```{r}
+# Summarize Education column (use table function)
+# Lets treat Education column as ordinal categories and use simple levels for distance calculations
+# Assuming following order of degrees:
+#    HighSchool, Associate, Bachelor, Master, PhD
+# factorize Education column (hint: use factor function with above levels)
+df$Education <-factor(df$Education, order = TRUE, levels = c( "HighSchool", "Associate", "Bachelor", "Master", "PhD"))
+
+summary(df$Education)
+```
+
+```{r}
+# Summarize Education column (use table function)
+table(df$Education)
+# Lets convert single Marital_Status categories for 5 separate binary categories 
+# Divorced, Married, Single, Together and Widow, the value will be 1 if customer 
+# is in that category and 0 if customer is not
+# hint: use dummyVars from caret package, model.matrix or simple comparison (there are only 5 groups)
+
+#dmy <- dummyVars("~ Marital_Status", data = df)
+#x <- data.frame(predict(dmy, newdata = df))
+#df1<-cbind(data,x)
+
+#print(df1)
+df <-df %>% 
+  mutate(Divorced = ifelse(Marital_Status=='Divorced', 1, 0),
+         Married = ifelse(Marital_Status=='Married', 1, 0),
+         Single = ifelse(Marital_Status=='Single', 1, 0),
+         Together = ifelse(Marital_Status=='Together', 1, 0),
+         Widow = ifelse(Marital_Status=='Widow', 1, 0))
+df
+```
+
+```{r}
+# lets remove columns which we will no longer use:
+# remove ID, Year_Birth, Dt_Customer, Marital_Status
+# and save it as df_sel 
+df = select(df, -1, -2,-4, -8)
+
+
+# Convert Education to integers 
+# hint: use as.integer function, if you use factor function earlier 
+# properly then HighSchool will be 1, Associate will be 2 and so on)
+df$Education = as.integer(df$Education)
+df
+
+```
+
+
+```{r}
+# lets scale
+# run scale function on df_sel and save it as df_scale
+# that will be our scaled values which we will use for analysis
+df_scale <- as.data.frame(scale(df))
+df_scale
+
+```
+
+## PCA
+
+**Q2.2.** Run PCA *(12 points)*
+
+```{r}
+# Run PCA on df_scale, make biplot and scree plot/percentage variance explained plot
+# save as pc_out, we will use pc_out$x[,1] and pc_out$x[,2] later for plotting
+pc_out <- prcomp(df_scale)
+biplot(pc_out)#(pc_out) %>% ggplotly()
+screeplot(pc_out, type = "line", main = "Scree plot")
+
+```
+
+
+```{r}
+```
+
+**Q2.3** Comment on observation (any visible distinct clusters?) *(4 points)*
+
+1st PC has highest variance more than two times larger than second, however it is 
+still around 25%. Second and higher PC has PVE less than 10%. Slow grow in cumulative PVE
+shows that large number of features is needed.
+
+May be two clusters?
+
+Cumulative PVE of first and second PCA is only 30%. This tells us that we need more iterations of PCA to be able to explain more variance.From the biplot we can see that we can create many more clusters to divide the data.
+
+## Cluster with K-Means
+In questions Q2.4 to Q2.9 use K-Means method for clustering
+
+### Selecting Number of Clusters
+
+**Q2.4** Select optimal number of clusters using elbow method. *(6 points)*
+
+
+```{r}
+#compute from k=2 to k=20
+k.max <- 20
+data <- df_scale
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 20 )$tot.withinss})
+wss
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+
+```
+**Q2.5** Select optimal number of clusters using Gap Statistic.*(6 points)*
+
+```{r}
+gap_kmeans <- clusGap(df_scale, kmeans, nstart = 20, K.max = 10, B = 100)
+
+plot(gap_kmeans, main = "Gap Statistic: kmeans")
+
+```
+**Q2.6** Select optimal number of clusters using Silhouette method.*(6 points)*
+
+```{r}
+par(mar = c(5, 2, 4, 2), mfrow=c(2,2))
+for(k in c(2,3,4,9)) {
+  kmeans_cluster <- kmeans(df_scale, k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(df_scale))
+  plot(si,main="")
+}
+par(mar = c(1, 1, 1, 1), mfrow=c(1,1))
+```
+
+
+**Q2.7** Which k will you choose based on elbow, gap statistics and silhuettes 
+as well as clustering task (market segmentation for advertisement purposes)?*(4 points)*
+In elbow plot k =2 is optimal
+In Gap statistics k = 2 is optimal
+In Silhoutte plot k = 2 is optimal 
+Hence, the optimal number for the number of clusters is k=2.
+
+## Clusters Visulalization
+
+**Q2.8** Make k-Means clusters with selected k_kmeans (store result as km_out).
+Plot your k_kmeans clusters on biplot (just PC1 vs PC2) by coloring points by their cluster id.*(4 points)*
+
+
+```{r}
+
+km_2 <- kmeans(df_scale, 2, nstart = 25)
+fviz_cluster(km_2, data = df_scale) + ggtitle("k=2")
+km_3 <- kmeans(df_scale, 3, nstart = 25)
+fviz_cluster(km_3, data = df_scale) + ggtitle("k=3")
+
+```
+
+**Q2.9** Do you see any grouping? Comment on you observation.*(4 points)*
+Yes, we are able to group the data, it is more distinct when there are only 2 clusters but grouping is valid for 3 clusters as well.
+
+*Answer*...
+
+
+## Characterizing Cluster
+
+**Q2.10** Perform descriptive statistics analysis on obtained cluster. 
+Based on that does one or more group have a distinct characteristics? *(10 points)*
+Hint: add cluster column to original df dataframe
+
+```{r}
+df_scale$Cluster <- km_2$cluster
+head(df_scale)
+library(psych)
+    
+describeBy(df_scale, group="Cluster")
+
+
+```
+We have grouped the cluster stats into two based on cluster 1 and cluster two and we can observe that 
+Cluster1: less educated, lower income, more kids, more teen homes, lower in age while these features are distinctinvly opposite in cluster 2. 
+
+```{r}
+
+```
+
+
+
+## Cluster with Hierarchical Clustering
+
+
+**Q2.11** Perform clustering with Hierarchical method.
+Try complete, single and average linkage.
+Plot dendagram, based on it choose linkage and number of clusters, if possible, explain your
+choice. *(10 points)*
+
+```{r}
+x_dist <- dist(df_scale)
+hc.complete <- hclust(dist(df_scale), method = "complete")
+plot(hc.complete, main = "Complete Linkage",
+    xlab = "", sub = "", cex = .9)
+library(ggdendro)
+#p <- ggdendrogram(hc.complete, rotate = FALSE)
+#ggplotly(p)
+
+```
+
+
+```{r}
+hc.single <- hclust(dist(df_scale), method = "single")
+plot(hc.single, main = "Single Linkage",
+    xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+hc.average <- hclust(dist(df_scale), method = "average")
+plot(hc.average, main = "Average Linkage",
+    xlab = "", sub = "", cex = .9)
+```
+
+Single linkage: closer observations but spread out clusters
+complete linkage: tighter observations but spread closely
+Average linkage: clusters are averaged to be closer
+We should be Complete or Averaged if we are to chose, while average linkage is still better between the two.
+# Additional grading criteria:
+
+**G3.1** Was all random methods properly seeded? *(2 points)*
+The data was randomly spread so we used seed(786) to get the same output everytime.

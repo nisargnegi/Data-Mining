@@ -1,0 +1,487 @@
+---
+title: "Homework 4. Time series"
+output: pdf_document
+---
+
+The submitted files must include pdf-s with your answers along with all R scripts. For example:
+
+ * Student A submitted:
+   * Homework4.pdf - final report containing all answers 
+   * Homework4.Rmd - R-markdown files with student solutions
+
+No pdf report - no grade. If you experience difficulties with knitting, combine your answers in Word and any other editor and produce pdf-file for grading.
+
+No R scripts - 50 % reduction in grade if relative code present in pdf- report, 100% reduction if no such code present.
+
+Reports longer than 25 pages are not going to be graded.
+
+
+```{r setup, warning=F, message=F,echo=F,include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+
+```
+
+
+## Question1
+
+1. The plastics data set (see plastics.csv) consists of the monthly sales (in thousands) of product A for a plastics manufacturer for five years. (Total 32 points)
+
+1.1	Read csv file and convert to tsible with proper index (2 points)
+
+```{r}
+data <- readr::read_csv("plastics.csv",show_col_types = FALSE)
+
+# Convert to tsibble with index at date
+data %>% 
+  mutate(converted_date=yearmonth(date)) %>% 
+  tsibble(index=converted_date) -> 
+  data
+head(data)
+```
+
+
+
+1.2	Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle? (2 points)
+
+```{r}
+data %>% autoplot(sale)
+```
+  Yes, we can see an overall increase in trend. And in the trend cycle we can observe that the trend increases over time.
+  
+1.3)	Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal components. Plot these components. (4 points)
+
+```{r}
+
+decompose_data <- data %>%
+  model(classical_decomposition(sale, type = "mult")) 
+decompose_data %>% components() %>% autoplot()
+```
+
+1.4	Do the results support the graphical interpretation from part a? (2 points)
+
+Yes, the results support the graphical interpretation. The trend plot shows and increasing trend with time.We can also see the seasonal increase in trend probably in summer, depending on the location being in northern hemisphere.
+
+
+1.5	Compute and plot the seasonally adjusted data. (2 points)
+```{r}
+dcmp = data%>% 
+  model(STL(sale))
+
+data%>%autoplot(sale)+ 
+  autolayer(components(dcmp), season_adjust, color= "blue")+
+labs(x="Date",y = "Sale in thousand", title="Seasonally adjusted data")
+```
+
+1.6 Change one observation to be an outlier (e.g., add 500 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier? (2 points)
+tip: use autoplot to plot original and add outlier plot with autolayer
+```{r}
+set.seed(200)
+index = sample(1:60,1)
+data_o <- data
+data_o$sale[index] <- data_o$sale[index] + 500
+dcmp_o = data_o%>% 
+  model(STL(sale))
+
+
+data_o%>%autoplot(sale)+ 
+  autolayer(components(dcmp_o), season_adjust, color= "blue")+
+labs(x="Date",y = "Sale in thousand", title="Seasonally adjusted data")
+```
+The outlier gives a peak in seasonality after 1998. 
+
+
+1.7 Does it make any difference if the outlier is near the end rather than in the middle of the time series? (2 points)
+
+The outlier in the oeak would affect the trend of the data rather than seasonality. Although placing the outlier anywhere will affect the time series.
+
+1.8 Let's do some accuracy estimation. Split the data into training and testing.
+Let all points up to the end of 1998 (including) are training set. (2 points)
+
+```{r}
+df_whole <- data
+df_train <- df_whole %>% filter(converted_date < yearmonth("1999 Jan"))
+```
+
+
+1.9 Using training set create a fit for mean, naive, seasonal naive and drift methods.
+Forecast next year (in training set). Plot forecasts and actual data. Which model performs the best. (4 points)
+```{r}
+fit <- df_train %>%
+  model(
+    Mean = MEAN(sale),
+    Naive = NAIVE(sale),
+    Seasonal_Naive = SNAIVE(sale),
+    Drift = RW(sale ~ drift())
+  )
+accuracy(fit)
+#report(fit)
+report(fit[1])
+report(fit[2])
+report(fit[3])
+report(fit[4])
+
+# forecast next year (in training set)
+fc <- fit %>% forecast(h = 24)
+# plot forecasts and actual data
+fc %>% autoplot(df_whole,level = NULL)
+
+```
+The best model is the Seasonal_Naive as it has the lowest RMSE score.
+
+1.10 Repeat 1.9 for appropriate EST. Report the model. Check residuals. Plot forecasts and actual data. (4 points)
+```{r}
+df_train %>% model(STL(log(sale))) %>% components() %>% autoplot()
+
+fit <- df_train %>%
+  model(
+    ets_auto = ETS(log(sale)),
+    ets = ETS(log(sale) ~ error("A") + trend("A") + season("A"))
+  )
+accuracy(fit)
+report(fit[1])
+report(fit[2])
+
+#fit <- fit %>% select(ets)
+
+# forecast next year (in training set)
+fc <- fit[2] %>% forecast(h = 24)
+# plot forecasts and actual data
+fc %>% autoplot(df_whole,level = 90)
+
+```
+```{r}
+
+#Check residuals
+gg_tsresiduals(fit[2])
+```
+
+1.11 Repeat 1.9 for appropriate ARIMA. Report the model. Check residuals. Plot forecasts and actual data. (4 points)
+```{r}
+gg_tsdisplay(df_train, sale, plot_type='partial')
+```
+ACF: non seasonal: MA(1) seasonal: MA(12) (0,1,1),(0,1,1)base12
+PACF:non seasonal: MA(2) seasonal: MA(12)  (2,1,0),(0,1,1)base12
+```{r}
+#library(tseries)
+#adf.test(df_train$sale)#data stationary as p value less than .05
+```
+Data is not staionary
+```{r}
+gg_tsdisplay(df_train, difference(sale), plot_type='partial')
+
+```
+We select first order difference as it has more noise
+From PACF: MA(6) so (13,1,0) & 
+From ACF: AR(12) so (0,1,12)
+
+
+```{r}
+df_train %>%
+features(sale, unitroot_kpss)
+```
+```{r}
+df_train %>% features(sale, unitroot_nsdiffs)
+df_train %>% features(log(sale), unitroot_nsdiffs)
+```
+```{r}
+df_train %>% features( difference(log(sale), lag=12), unitroot_ndiffs)
+
+```
+```{r}
+gg_tsdisplay(df_train, difference(log(sale), lag=12), plot_type='partial')
+
+```
+
+
+```{r}
+
+
+fit <- (df_train) %>%
+  model(
+    arima_auto = ARIMA(log(sale), stepwise = FALSE, approx = FALSE),
+    arima011011 = ARIMA(log(sale)~0+pdq(0,1,1)+PDQ(0,1,1)),
+    arima2210011 = ARIMA(log(sale)~0+pdq(2,1,0)+PDQ(0,1,1))
+
+  )
+accuracy(fit)
+report(fit[1])
+report(fit[2])
+report(fit[3])
+
+
+
+fc <- fit %>% forecast(h = "2 year")
+
+
+
+```
+```{r}
+fc %>% autoplot(df_whole,level = 80)
+
+```
+
+```{r}
+gg_tsresiduals(fit[1])
+```
+
+1.12 Which model has best performance? (2 points)
+Auto ARIMA has the best performance as it has the lowest RMSE values, although AIC values of our model arima2210011 is lower. 
+## Question 2
+
+2 For this exercise use data set visitors (visitors.csv), the monthly Australian short-term overseas visitors data (thousands of people per month), May 1985–April 2005. (Total 32 points)
+
+2.1	Make a time plot of your data and describe the main features of the series. (6 points)
+```{r}
+visitors_df <- readr::read_csv("visitors.csv",show_col_types = FALSE)
+
+# Convert to tsibble with index at date
+visitors_df %>% 
+  mutate(converted_date=yearmonth(date)) %>% 
+  tsibble(index=converted_date) -> 
+  vis_data
+head(vis_data)
+
+#plot 
+autoplot(vis_data) +  ggtitle("Overseas visitors to Australia") +xlab("Years")+ ylab("Visitors")
+```
+```{r}
+decompose_data <- vis_data %>%
+  model(classical_decomposition(visitors, type = "mult")) 
+decompose_data %>% components() %>% autoplot()
+```
+
+
+The number if vistors increase every year and there is a good amount of seasonality to it.
+
+2.2	Split your data into a training set and a test set comprising the last two years of available data. Forecast the test set using Holt-Winters’ multiplicative method. (6 points)
+```{r}
+vis_train <- vis_data %>% filter(converted_date < yearmonth("2003 May"))
+vis_test <- vis_data %>% filter(converted_date > yearmonth("2003 Apr"))
+
+#forecasting for next two years
+fit <- vis_train %>%
+  model(holt = ETS(visitors ~ error("A") + trend("A") + season("M"))) %>%
+  forecast(h = 24)  
+
+autoplot(vis_train, level = 90, color = "black") +
+  autolayer(fit, color = "red", series="Holt-Winters’") +
+  autolayer(vis_test, color = "green", series = "Test") +
+  labs(title="Holt-Winters’ multiplicative method 2 year forecast", x = 'Time', y="Total Visitors")
+
+```
+
+
+2.3.	Why is multiplicative seasonality necessary here? (6 points)
+The magnitude of seasonal component changes with times, hence multiplicative seasonality.
+
+2.4.	Forecast the two-year test set using each of the following methods: (8 points)
+
+  I.	an ETS model;
+  II.	an additive ETS model applied to a Box-Cox transformed series;
+  III.	a seasonal naïve method;
+
+```{r}
+vis_train %>%
+  model(STL(log(visitors))) %>%
+  components() %>%
+  autoplot()
+```
+  
+```{r}
+ets_fit = vis_train %>%
+  model(
+    ets_auto = ETS(log(visitors)),
+    Seasonal_Naive = SNAIVE(visitors)
+  )
+accuracy(ets_fit)
+report(ets_fit[1])
+report(ets_fit[2])
+
+ets_fc = ets_fit %>% forecast(h = "2 years")
+
+autoplot(vis_train, level = 90, color = "black") +
+  autolayer(ets_fc, color = "red", series="ETS") +
+  autolayer(vis_test, color = "green", series = "Test") +
+  ggtitle("ETS Additive and seasonal naïve Model 2 year forecast") + 
+  xlab("Months") +
+  ylab("Visitors")
+
+```
+```{r}
+#box cox
+lambda = vis_train %>% features(visitors, features = guerrero)
+lambda
+```
+
+```{r}
+df_train_bc = vis_train %>% mutate(visitors = box_cox(visitors, lambda))
+df_test_bc = vis_test %>% mutate(visitors = box_cox(visitors, lambda))
+
+bc_fit = df_train_bc %>%
+  model(
+    Box_cox_ets = ETS(log(visitors) ~ error("A") + trend("A") + season("A")),
+  )
+accuracy(bc_fit)
+report(bc_fit)
+
+bc_fc = bc_fit %>% forecast(h = "2 years")
+
+autoplot(vis_train, color = "black") +
+  autolayer(bc_fc, color = "red", series ="BoxCox-ETS-forecasts") +
+  autolayer(df_test_bc, color = "green", series = "Test") +
+  ggtitle("Forecast using Box-Cox ETS method") + 
+  xlab('Date') +
+  ylab("Total Visitors")
+
+
+```
+ 
+
+2.5.	Which method gives the best forecasts? Does it pass the residual tests? (6 points)
+```{r}
+#accuracy ets
+# Accuracy and residuals for the ets and snaive model
+accuracy(ets_fc, vis_data)
+report(ets_fit[1])
+report(ets_fit[2])
+gg_tsresiduals(ets_fit[1])
+gg_tsresiduals(ets_fit[2])
+
+augment(ets_fit[1]) %>%  features(.innov, ljung_box, lag=24, dof=7)
+augment(ets_fit[2]) %>%  features(.innov, ljung_box, lag=24, dof=7)
+
+```
+```{r}
+# Accuracy and residuals for the additive ets model
+accuracy(bc_fc,vis_data)
+report(bc_fit)
+gg_tsresiduals(bc_fit)
+augment(bc_fit) %>%  features(.innov, ljung_box, lag=24, dof=7)
+```
+
+Snaive is giving p value 0, that means model errors are autocorrelated and we cannot not trust the model.
+Further comparing the rmse and AIC values we can tell that the Auto ETS model is the best to use.
+## Question 3
+
+3. Consider usmelec (usmelec.csv), the total net generation of electricity (in billion kilowatt hours) by the U.S. electric industry (monthly for the period January 1973 – June 2013). In general there are two peaks per year: in mid-summer and mid-winter. (Total 36 points)
+
+3.1	Examine the 12-month moving average of this series to see what kind of trend is involved. (4 points)
+```{r}
+library(tidyquant)
+library(ggplot2)
+usmelec_df <- readr::read_csv("usmelec.csv",show_col_types = FALSE)
+
+# Convert to tsibble with index at date
+usmelec_df %>% 
+  mutate(index=yearmonth(index)) %>% 
+  tsibble(index= index) -> 
+  usmelec_data
+head(usmelec_data)
+
+
+autoplot(usmelec_data)
+
+usmelec_ma <- usmelec_data %>%
+  ggplot(aes(x = index, y = value)) +
+  geom_line(color = "black") + 
+  geom_ma(ma_fun = SMA, n = 30, color = "red") +
+  labs(x = "Date", y = "Total electricity", title = "Electricity generated in US(MA)")
+usmelec_ma
+
+```
+
+3.2	Do the data need transforming? If so, find a suitable transformation. (4 points)
+```{r}
+#QQ plot for the data
+qqnorm(usmelec_data$value)
+qqline(usmelec_data$value, col = 2)
+```
+
+```{r}
+#box cox lambda variable
+lambda = usmelec_data %>% features(value, features = guerrero)
+lambda
+
+```
+```{r}
+#applying box cox transform on the data
+usmelec_bc = usmelec_data %>% mutate(value = box_cox(value, lambda))
+autoplot(usmelec_bc)
+```
+```{r}
+#QQ plot for the box cox tranform data
+qqnorm(usmelec_bc$value)
+qqline(usmelec_bc$value, col = 2)
+```
+Yes, as we can observe from the qq plot, the box cox transformation eliminates non linearity, differeing variances and variability from the data. Our data has been transformed with a new normal distribution.  
+
+3.3	Are the data stationary? If not, find an appropriate differencing which yields stationary data. (4 points)
+```{r}
+usmelec_bc %>% features(value, unitroot_kpss)
+usmelec_bc %>%gg_tsdisplay(value, plot_type='partial')
+```
+kpss value is less than 0.05 so we can tell that the data is not stationaty
+```{r}
+usmelec_bc %>% features(difference(value,1), unitroot_kpss)
+usmelec_bc %>%gg_tsdisplay(difference(value,1), plot_type='partial')
+```
+Applying first diffference to the data makes it staionary(kpss value > 0.05)
+
+3.4	Identify a couple of ARIMA models that might be useful in describing the time series. Which of your models is the best according to their AIC values? (6 points)
+```{r}
+fit_usmelec_bc <- usmelec_bc %>%
+  model(
+    arima_auto_usmelec = ARIMA(value, stepwise = FALSE, approx = FALSE, ic='aic'),
+    arima_elec = ARIMA(value~0+pdq(1,1,1)+PDQ(1,1,1))
+  )
+accuracy(fit_usmelec_bc)
+report(fit_usmelec_bc[1])
+report(fit_usmelec_bc[2])
+```
+The model with non season pdq(1,1,1) & seasonal pdq(1,1,1) has almost same but lower AIC value by a difference of order 10^-3 than Auto ARIMA but the rmse value of Auto ARIMA is better.
+
+3.5	Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better. (4 points)
+
+```{r}
+gg_tsresiduals(fit_usmelec_bc[1])
+report(fit_usmelec_bc[1])
+```
+
+From the ACF plot we can tell that the residuals do not resemble white noise. 
+
+3.6	Forecast the next 15 years of electricity generation by the U.S. electric industry. Get the latest figures from the EIA (https://www.eia.gov/totalenergy/data/monthly/#electricity) to check the accuracy of your forecasts. (8 points)
+```{r}
+auto_arima_usmelec_bc_fc <- fit_usmelec_bc %>% forecast(h = "15 years")
+auto_arima_usmelec_bc_fc %>% autoplot(usmelec_bc,level = 90) +labs(title="15 year Forecast Electricity generated in US", x = 'Time', y="Value")
+```
+
+3.7.	Eventually, the prediction intervals are so wide that the forecasts are not particularly useful. How many years of forecasts do you think are sufficiently accurate to be usable? (6 points)
+
+Comparing with the results on the government portal and considering the width of forecast we can only consider the next 4-5 year of predictions to be usable with a margin of error. 
+```{r}
+auto_arima_usmelec_bc_fc <- fit_usmelec_bc %>% forecast(h = "5 years")
+auto_arima_usmelec_bc_fc %>% autoplot(usmelec_bc,level = 90) +labs(title="15 year Forecast Electricity generated in US", x = 'Time', y="Value")
+```
+

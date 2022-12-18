@@ -1,0 +1,518 @@
+---
+title: 'Interactive Data Visualization with plotly in R '
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    css: doc.css
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used libraries
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+# R package DT provides an R interface to the JavaScript library DataTables.
+if (!require("DT")) install.packages("DT")
+# geom_mark_hull
+if (!require("concaveman")) install.packages("concaveman")
+if (!require("ggforce")) install.packages("ggforce")
+
+
+# more libraries
+if (!require("listviewer")) install.packages("listviewer")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("forcats")) install.packages("forcats")
+if (!require("maps")) install.packages("maps")
+if (!require("mvtnorm")) install.packages("mvtnorm")
+if (!require("gapminder")) install.packages("gapminder")
+if (!require("hexbin")) install.packages("hexbin")
+if (!require("Hmisc")) install.packages("Hmisc")
+if (!require("GGally")) install.packages("GGally")
+
+```
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(ggplot2)
+library(plotly)
+library(ggforce)
+library(dplyr)
+library(lubridate)
+```
+
+# plotly - Documentation
+
+* Documentation:
+  * [https://plotly.com/r/](https://plotly.com/r/)
+* Book:
+  * Interactive web-based data visualization with R, plotly, and shiny
+by Carson Sievert [https://plotly-r.com/](https://plotly-r.com/)
+
+This document is essentially a brief notes of the book above.
+
+# Bars & histograms
+
+* `add_bars()` - add bar plot
+* `add_histogram()` - add histogramm
+  * plotly.js will do binning
+  * can be compute and storage inefficient, use `add_bar()` with `hist()` or `count()` on large samples
+
+```{r}
+p1 <- plot_ly(diamonds, x = ~price) %>%
+  add_histogram(name = "plotly.js binning")
+
+# what does function price_hist return?
+price_hist <- function(method = "FD") {
+  h <- hist(diamonds$price, breaks = method, plot = FALSE)
+  plot_ly(x = h$mids, y = h$counts) %>% add_bars(name = method)
+}
+
+subplot(
+  p1, price_hist(), price_hist("Sturges"),  price_hist("Scott"),
+  nrows = 4, shareX = TRUE
+)
+
+```
+
+```{r}
+# categorical
+library(dplyr)
+p1 <- plot_ly(diamonds, x = ~cut) %>%
+  add_histogram()
+
+p2 <- diamonds %>%
+  count(cut) %>%
+  plot_ly(x = ~cut, y = ~n) %>% 
+  add_bars()
+
+subplot(p1, p2) %>% hide_legend()
+```
+## Multiple numeric distributions
+
+```{r}
+# faking ggplot's facet_wrap() or facet_grid()
+one_plot <- function(d) {
+  plot_ly(d, x = ~price) %>%
+    add_annotations(
+      ~unique(clarity), x = 0.5, y = 1, 
+      xref = "paper", yref = "paper", showarrow = FALSE
+    )
+}
+
+diamonds %>%
+  split(.$clarity) %>%
+  lapply(one_plot) %>% 
+  subplot(nrows = 2, shareX = TRUE, titleX = FALSE) %>%
+  hide_legend()
+
+```
+## Multiple discrete distributions
+```{r}
+plot_ly(diamonds, x = ~cut, color = ~clarity) %>%
+  add_histogram()
+```
+More details in <https://plotly-r.com/bars-histograms.html>
+
+# Boxplots
+
+```{r}
+p <- plot_ly(diamonds, y = ~price, color = I("black"), 
+             alpha = 0.1, boxpoints = "suspectedoutliers")
+p1 <- p %>% add_boxplot(x = "Overall")
+p2 <- p %>% add_boxplot(x = ~cut)
+subplot(
+  p1, p2, shareY = TRUE,
+  widths = c(0.2, 0.8), margin = 0
+) %>% hide_legend()
+```
+```{r}
+plot_ly(diamonds, x = ~price, y = ~interaction(clarity, cut)) %>%
+  add_boxplot(color = ~clarity) %>%
+  layout(yaxis = list(title = ""))
+```
+* `add_boxplot()` -  plotly.js will do statistics calculation
+  * can be compute and storage inefficient, use precomputed
+```{r}
+plot_ly(y = list(1,2,3,4,5,6,7,8,9), type = "box", q1=list(1, 2, 3), median=list(4, 5, 6),
+                  q3=list(7, 8, 9 ), lowerfence=list(-1, 0, 1),
+                  upperfence=list(5, 6, 7), mean=list(2.2, 2.8, 3.2 ),
+                  sd=list(0.2, 0.4, 0.6), notchspan=list(0.2, 0.4, 0.6))
+```
+
+More on box plots <https://plotly-r.com/boxplots.html>, <https://plotly.com/r/box-plots/>.
+
+# 2D Frequencies/Historgamms and Heatmap
+
+* add_heatmap() - plot a heatmap, similar to add_bar in 1-D
+* add_histogram2d() - plot a histogramm, plot.js do calculations
+
+```{r}
+p <- plot_ly(diamonds, x = ~log(carat), y = ~log(price))
+subplot(
+  add_histogram2d(p) %>%
+    colorbar(title = "default") %>%
+    layout(xaxis = list(title = "default")), # default bins
+  add_histogram2d(p, zsmooth = "best") %>%
+    colorbar(title = "zsmooth") %>%
+    layout(xaxis = list(title = "zsmooth")), # interpolation
+  add_histogram2d(p, nbinsx = 60, nbinsy = 60) %>%
+    colorbar(title = "nbins") %>%
+    layout(xaxis = list(title = "nbins")), # manually more bins
+  shareY = TRUE, titleX = TRUE
+)
+```
+```{r}
+kde_count <- function(x, y, ...) {
+  kde <- MASS::kde2d(x, y, ...)
+  df <- with(kde, setNames(expand.grid(x, y), c("x", "y")))
+  # The 'z' returned by kde2d() is a proportion, 
+  # but we can scale it to a count
+  df$count <- with(kde, c(z) * length(x) * diff(x)[1] * diff(y)[1])
+  data.frame(df)
+}
+
+kd <- with(diamonds, kde_count(log(carat), log(price), n = 30))
+plot_ly(kd, x = ~x, y = ~y, z = ~count) %>% 
+  add_heatmap() %>%
+  colorbar(title = "Number of diamonds")
+```
+```{r}
+# correlogram
+# colors?
+corr <- cor(dplyr::select_if(diamonds, is.numeric))
+plot_ly(colors = "RdBu") %>%
+  add_heatmap(x = rownames(corr), y = colnames(corr), z = corr) %>%
+  colorbar(limits = c(-1, 1))
+```
+
+```{r}
+# draw random values from correlated bi-variate normal distribution
+s <- matrix(c(1, 0.3, 0.3, 1), nrow = 2)
+m <- mvtnorm::rmvnorm(1e5, sigma = s)
+x <- m[, 1]
+y <- m[, 2]
+s <- subplot(
+  plot_ly(x = x, color = I("black")), 
+  plotly_empty(), 
+  plot_ly(x = x, y = y, color = I("black")) %>%
+    add_histogram2dcontour(colorscale = "Viridis"), 
+  plot_ly(y = y, color = I("black")),
+  nrows = 2, heights = c(0.2, 0.8), widths = c(0.8, 0.2), margin = 0,
+  shareX = TRUE, shareY = TRUE, titleX = FALSE, titleY = FALSE
+)
+layout(s, showlegend = FALSE)
+```
+
+more in <https://plotly-r.com/frequencies-2d>
+
+# 3d charts
+
+Markers
+
+```{r}
+iris
+plot_ly(iris, x = ~Sepal.Length, y = ~Sepal.Width, z = ~Petal.Length) %>%
+  add_markers(color = ~Species, size=I(40))
+# aren't symbols too big?
+```
+Interactions are different from 2D
+* left click - drag - rotate
+* middle click - drag or use mouse scroll-wheel -> scale/zoom
+* right click - drag - move
+* try ctlr+mouse buttons
+
+Lines:
+* add_lines()
+* add_paths()
+
+
+Surfaces
+* add_surface()
+
+```{r}
+volcano[1:10,1:10]
+x <- seq_len(nrow(volcano)) + 100
+y <- seq_len(ncol(volcano)) + 500
+plot_ly() %>% add_surface(x = ~x, y = ~y, z = ~volcano)
+```
+more in <https://plotly-r.com/d-charts.html>
+
+# Maps
+
+* Integrated maps
+  * Mapbox powered basemap
+  * Integrated d3.js powered basemap
+* Custom maps
+
+```{r}
+# simple latitude/longitude data
+head(maps::us.cities)
+p <- plot_mapbox(maps::us.cities) %>%
+  add_markers(
+    x = ~long, 
+    y = ~lat, 
+    size = ~pop, 
+    color = ~country.etc,
+    colors = "Accent",
+    text = ~paste(name, pop),
+    hoverinfo = "text"
+  )
+p
+```
+
+```
+Error: No mapbox access token found. Obtain a token here
+https://www.mapbox.com/help/create-api-access-token/
+Once you have a token, assign it to an environment variable 
+named 'MAPBOX_TOKEN', for example,
+Sys.setenv('MAPBOX_TOKEN' = 'secret token')
+
+Need mapbox account
+
+Regester with map box and add to .Renviron in your Documents folder:
+MAPBOX_TOKEN="magic.token"
+
+
+```
+
+
+```{r}
+schema()$layout$layoutAttributes$mapbox$style$values
+```
+
+```{r}
+p %>% layout(
+  mapbox = list(style = "satellite")
+)
+```
+
+```{r}
+# integrated plotly.js dropdown menu to control the basemap style
+styles <- schema()$layout$layoutAttributes$mapbox$style$values
+style_buttons <- lapply(styles, function(s) {
+  list(
+    label = s, 
+    method = "relayout", 
+    args = list("mapbox.style", s)
+  )
+})
+layout(
+  p, 
+  mapbox = list(style = "dark"),
+  updatemenus = list(
+    list(y = 0.8, buttons = style_buttons)
+  )
+)
+```
+
+```{r}
+# same with plot_geo()
+p <- plot_geo(maps::us.cities) %>%
+  add_markers(
+    x = ~long, 
+    y = ~lat, 
+    size = ~pop, 
+    color = ~country.etc,
+    colors = "Accent",
+    text = ~paste(name, pop),
+    hoverinfo = "text"
+  )
+p
+p %>% layout(
+  geo = list(
+    projection = list(
+      type = 'orthographic',
+      rotation = list(lon = -100, lat = 40, roll = 0)
+    ),
+    showland = TRUE,
+    landcolor = toRGB("gray95"),
+    countrycolor = toRGB("gray80")
+  ), 
+  showlegend = FALSE)
+```
+plot_mapbox uses only mercator projection, while plot_geo support more.
+
+Use add_line(), add_path(), add_segments() on them.
+
+## Choropleths
+
+```{r}
+density <- state.x77[, "Population"] / state.x77[, "Area"]
+density
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  lakecolor = toRGB('white')
+)
+
+plot_geo() %>%
+  add_trace(
+    z = ~density, text = state.name, span = I(0),
+    locations = state.abb, locationmode = 'USA-states'
+  ) %>%
+  layout(geo = g)
+```
+```{r}
+plot_ly() %>%
+  add_trace(
+    type = "choroplethmapbox",
+    # See how this GeoJSON URL was generated at
+    # https://plotly-r.com/data-raw/us-states.R
+    geojson = paste(c(
+      "https://gist.githubusercontent.com/cpsievert/",
+      "7cdcb444fb2670bd2767d349379ae886/raw/",
+      "cf5631bfd2e385891bb0a9788a179d7f023bf6c8/", 
+      "us-states.json"
+    ), collapse = ""),
+    locations = row.names(state.x77),
+    z = state.x77[, "Population"] / state.x77[, "Area"],
+    span = I(0)
+  ) %>%
+  layout(
+    mapbox = list(
+      style = "light",
+      zoom = 4,
+      center = list(lon = -98.58, lat = 39.82)
+    )
+  ) %>%
+  config(
+    mapboxAccessToken = Sys.getenv("MAPBOX_TOKEN"),
+    # Workaround to make sure image download uses full container
+    # size https://github.com/plotly/plotly.js/pull/3746
+    toImageButtonOptions = list(
+      format = "svg", 
+      width = NULL, 
+      height = NULL
+    )
+  )
+```
+more in <https://plotly-r.com/maps.html>, in particular check sf package
+
+# Animation
+
+* Additional dimension
+* Supported through `frame` argument/aesthetic. use `ids` for smother transitions.
+
+```{r}
+data(gapminder, package = "gapminder")
+gg <- ggplot(gapminder, aes(gdpPercap, lifeExp, color = continent)) +
+  geom_point(aes(size = pop, frame = year, ids = country)) +
+  scale_x_log10()
+ggplotly(gg) %>%
+  animation_opts(frame = 1000, transition = 500)
+```
+
+character variables is alphabet ordered, factors are level ordered
+
+```{r}
+meanLife <- with(gapminder, tapply(lifeExp, INDEX = continent, mean))
+gapminder$continent <- factor(
+  gapminder$continent, levels = names(sort(meanLife))
+)
+
+# some times smooth transition does not have sence
+gapminder %>%
+  plot_ly(x = ~gdpPercap, y = ~lifeExp, size = ~pop, 
+          text = ~country, hoverinfo = "text") %>%
+  layout(xaxis = list(type = "log")) %>%
+  add_markers(data = gapminder, frame = ~continent) %>%
+  hide_legend() %>%
+  animation_opts(frame = 1000, transition = 0)
+```
+```{r}
+gapminder %>%
+  plot_ly(x = ~gdpPercap, y = ~lifeExp, size = ~pop, 
+          text = ~country, hoverinfo = "text") %>%
+  layout(xaxis = list(type = "log")) %>%
+  add_markers(
+    color = ~continent, showlegend = F,
+    alpha = 0.2, alpha_stroke = 0.2
+  ) %>%
+  add_markers(color = ~continent, frame = ~year, ids = ~country) %>%
+  animation_opts(1000, redraw = FALSE)
+```
+
+Not all traces support animation
+
+More in <https://plotly-r.com/animating-views.html>
+
+# Artificial Intelligence and Machine Learning
+
+see <https://plotly.com/r/ai-ml/>
+
+# Generalized pairs plot
+```{r}
+pm <- GGally::ggpairs(iris, aes(color = Species))
+class(pm)
+#> [1] "gg"  "ggmatrix"
+ggplotly(pm)
+```
+
+# Summary
+
+Creating plotly object
+
+* `plot_ly()`/`plot_geo()`/`plot_mapbox()` - main plotly.R access functions
+* `ggplotly()` - convert ggplot
+* `plotly_build()` - convert list (don't do it, unless you know why you want it)
+
+
+Specifying actial (fixed) property
+
+* Use `I(<value>)` to specify color, mark and similar
+
+
+Use chaining with `%>%`. It is graphic gramma of plotly.R and it produce more readable code.
+
+
+add_*() functions:
+
+* add_histogram2d(), add_contour(), add_boxplot(,... - add specific type of trace
+
+
+subplot() - make subplot.
+
+
+WebGL is a lot more efficient at rendering lots of points, try `toWebGL()`.
+
+
+# Tips and Tricks
+
+## Plot widths.
+
+Interaction section: please tell me how! Following will work in html output:
+
+* out.width - does not help
+* argument width = 1200 does not affect large view.
+
+```{r out.width="150%"}
+library(plotly)
+p <- ggplot(mpg, aes(displ, hwy)) + geom_point()
+ggplotly(p)
+```
+
+```{r}
+library(plotly)
+p <- ggplot(mpg, aes(displ, hwy)) + geom_point()
+ggplotly(p, width = 1200)  
+```
+
+* change whole document width:
+
+```
+in R mardown file:
+output:
+  html_document:
+    css: doc.css
+
+in doc.css file:
+div.main-container {
+  max-width: 1600px !important;
+}
+```
+
+

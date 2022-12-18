@@ -1,0 +1,298 @@
+---
+title: 'Interactive Data Visualization with plotly in R '
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    css: doc.css
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used new libraries
+if (!require("shiny")) install.packages("shiny")
+if (!require("readr")) install.packages("readr")
+if (!require("purrr")) install.packages("purrr")
+
+```
+
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+# library(ggplot2)
+# library(plotly)
+# library(ggforce)
+# library(dplyr)
+# library(lubridate)
+```
+
+# Rshiny 
+
+Shiny – an R package for creating reactive web applications entirely in R. 
+
+Shiny’s **reactive programming model** allows R programmers to build upon their existing R knowledge and create data-driven web applications without any prior web programming experience. 
+
+
+# Rshiny - Documentation and Resources
+
+* Documentation:
+  * Documentation: <https://shiny.rstudio.com/articles/>
+  * Reference: <https://shiny.rstudio.com/reference/shiny/>
+  * Official Tutorial: <https://shiny.rstudio.com/tutorial/>
+    * <https://github.com/rstudio-education/shiny.rstudio.com-tutorial>
+  * Examples: <https://shiny.rstudio.com/gallery/>
+* Book:
+  * Mastering Shiny<https://mastering-shiny.org/>
+  * Interactive web-based data visualization with R, plotly, and shiny
+by Carson Sievert <https://plotly-r.com/>
+
+This document is essentially a brief notes of the book above.
+
+# Example 1
+
+```{r}
+# dataset txhousing - houses prices in Texas cities
+# txhousing dataframe comes with plotly library
+library(plotly)
+
+data(txhousing)
+txhousing
+```
+
+With ggplot2 for plotting
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+library(shiny)
+library(ggplot2)
+library(dplyr)
+
+# User Interface Description
+# - defines how inputs and output widgets are displayed on the page
+ui <- fluidPage(
+  selectInput(
+    inputId = "cities", 
+    label = "Select a city", 
+    choices = unique(txhousing$city), 
+    selected = "Abilene",
+    multiple = TRUE
+  ),
+  plotOutput(outputId = 'ggplot1')
+)
+
+# The server function
+# - defines a mapping from input values to output widgets
+server <- function(input, output, session) {
+  # note that element of output matches outputId in ui
+  output$ggplot1 <- renderPlot({ 
+    # note that element of input matches inputId in ui
+    ggplot(txhousing %>% filter(city %in% input$cities),
+           aes(x=date, y=median, color=city)) + geom_line()
+    # what is that syntax and what does it return?
+  })
+}
+
+# Start shiny web-server
+shinyApp(ui, server)
+```
+First argument, in **reactive function** (`render*`()), `{}`, is expression which possibly contains **reactive values**. This reactive expression will be called automatically on change of reactive values!
+
+Reactive values notify reactive function object that it value changes, in other ward that the old value is invalid now (thus it is also called invalidation).
+
+
+With plotly for plotting
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+library(shiny)
+library(plotly)
+
+
+# User Interface Description
+# - defines how inputs and output widgets are displayed on the page
+ui <- fluidPage(
+  selectizeInput(
+    inputId = "cities", 
+    label = "Select a city", 
+    choices = unique(txhousing$city), 
+    selected = "Abilene",
+    multiple = TRUE
+  ),
+  plotlyOutput(outputId = "plotly1")
+)
+
+# The server function
+# - defines a mapping from input values to output widgets
+server <- function(input, output, session) {
+  # note that element of output matches outputId in ui
+  output$plotly1 <- renderPlotly({
+    # note that element of input matches inputId in ui
+    plot_ly(txhousing, x = ~date, y = ~median) %>%
+      filter(city %in% input$cities) %>%
+      group_by(city) %>%
+      add_lines()
+  })
+}
+
+# Start shiny web-server
+shinyApp(ui, server)
+```
+
+Standard Shiny input widgets:
+
+* selectInput()/selectizeInput() for dropdown menus.
+* numericInput() for a single number.
+* sliderInput() for a numeric range.
+* textInput() for a character string.
+* dateInput() for a single date.
+* dateRangeInput() for a range of dates.
+* fileInput() for uploading files.
+* checkboxInput()/checkboxGroupInput()/radioButtons() for choosing a list of options.
+
+Standard Output widgets (ui function / rander function):
+
+* plotOutput() / renderPlot()
+  * static base and ggplot
+* tableOutput() / renderTable() ; datatableOutput() / renderDataTable()
+  * table
+* verbatimTextOutput() / renderPrint() ; textOutput()/renderText() ; 
+  * text output
+* imageOutput() / renderImage()
+  * image output
+
+More output widgets:
+* plotlyOutput() / renderPlotly()
+  * plotly
+* leafletOutput() / renderLeaflet()
+  * maps
+
+Output widgets can be input too (plots/ggplots/plotly/DT/leaflet)
+
+Almost all plotly events can be be an input
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+plotly_example("shiny", "event_data")
+```
+
+Add events handling to TXHousing
+
+
+## Edit events
+
+Edit events:  you can directly manipulate annotations, title, shapes by adding
+config(p, editable = TRUE). This editing generates plotly_relayout event. By listening to it we can generate a responce to edit.
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# Ex02_drag_markers.R
+# the effect of high leverage points on a simple linear model
+plotly_example("shiny", "drag_markers")
+```
+Also check "plotly_restyle" events.
+
+## Scoping events
+
+When managing multiple views that communicate with one another, you’ll need to be aware of which views are a source of interaction and which are a target (a view can be both, at once!). 
+
+The event_data() function provides a source argument to help refine which view(s) serve as the source of an event.
+
+The source argument takes a string ID, and when that ID matches the source of a plot_ly()/ggplotly() graph, then the event_data() is “scoped” to that view. 
+
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+library(shiny)
+
+# cache computation of the correlation matrix
+correlation <- round(cor(mtcars), 3)
+
+ui <- fluidPage(
+  plotlyOutput("heat"),
+  plotlyOutput("scatterplot")
+)
+
+server <- function(input, output, session) {
+  
+  output$heat <- renderPlotly({
+    plot_ly(source = "heat_plot") %>%
+      add_heatmap(
+        x = names(mtcars), 
+        y = names(mtcars), 
+        z = correlation
+      )
+  })
+  
+  output$scatterplot <- renderPlotly({
+    # if there is no click data, render nothing!
+    clickData <- event_data("plotly_click", source = "heat_plot")
+    if (is.null(clickData)) return(NULL)
+    
+    # Obtain the clicked x/y variables and fit linear model
+    vars <- c(clickData[["x"]], clickData[["y"]])
+    d <- setNames(mtcars[vars], c("x", "y"))
+    yhat <- fitted(lm(y ~ x, data = d))
+    
+    # scatterplot with fitted line
+    plot_ly(d, x = ~x) %>%
+      add_markers(y = ~y) %>%
+      add_lines(y = ~yhat) %>%
+      layout(
+        xaxis = list(title = clickData[["x"]]), 
+        yaxis = list(title = clickData[["y"]]), 
+        showlegend = FALSE
+      )
+  })
+  
+}
+
+shinyApp(ui, server)
+```
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+plotly_example("shiny", "event_data_persist")
+```
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# 01-kmeans-app
+
+palette(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3",
+          "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999"))
+
+library(shiny)
+
+ui <- fluidPage(
+  headerPanel('Iris k-means clustering'),
+  sidebarPanel(
+    selectInput('xcol', 'X Variable', names(iris)),
+    selectInput('ycol', 'Y Variable', names(iris),
+                selected = names(iris)[[2]]),
+    numericInput('clusters', 'Cluster count', 3,
+                 min = 1, max = 9)
+  ),
+  mainPanel(
+    plotOutput('plot1')
+  )
+)
+
+server <- function(input, output) {
+  
+  selectedData <- reactive({
+    iris[, c(input$xcol, input$ycol)]
+  })
+  
+  clusters <- reactive({
+    kmeans(selectedData(), input$clusters)
+  })
+  
+  output$plot1 <- renderPlot({
+    par(mar = c(5.1, 4.1, 0, 1))
+    plot(selectedData(),
+         col = clusters()$cluster,
+         pch = 20, cex = 3)
+    points(clusters()$centers, pch = 4, cex = 4, lwd = 4)
+  })
+  
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+

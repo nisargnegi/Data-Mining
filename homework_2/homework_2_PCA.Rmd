@@ -1,0 +1,440 @@
+---
+title: "Homework 2. PCA."
+author: "Nisarg Negi"
+date: '2022-10-03'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+# Part 1. PCA vs Linear Regression (10 points).
+
+Lets say we have two 'features', let one be $x$ and another $y$.
+Recall that In linear regression we are looking to get model like:
+
+
+$$y_i=\beta_0+\beta_1*x_i+\varepsilon_i$$
+
+after the fitting, for each data point we would have:
+$$y_i=\hat{\beta_0}+\hat{\beta_1}*x_i+r_i$$
+where $r_i$ is residual. It can be rewritten as:
+
+$$\hat{\beta_0}+r_i=y_i-\hat{\beta_1}*x_i\;\;\;\;\;(1)$$
+
+The first principal component $z_1$ calculated on $(x,y)$ is
+$$z_{i1}=\phi_{i1}y_i+\phi_{i1}x_i$$
+Dividing it by $\phi_{i1}$:
+$$\frac{z_{i1}}{\phi_{i1}}=y_i+\frac{\phi_{i1}}{\phi_{i1}}x_i\;\;\;\;\;(2)$$
+
+There is a functional resemblance between two last equation (described linear relationship between $y$ and $x$). Is following true: 
+$$\hat{\beta_0}+r_i=\frac{z_{i1}}{\phi_{i1}}$$
+$$\frac{\phi_{i1}}{\phi_{i1}}=-\hat{\beta_1}$$
+**Answer**: Yes
+
+
+What are the difference between coefficients optimization in linear regression and first PCA calculations?
+
+
+**Answer**: In first PCA calculation, error squares are minimized by taking PCA orthogal to the straight such that the variance is zero while in linear regression, error squares are minimized in y direction. 
+
+
+*(here should be the answere. help yourself with a plot)*
+
+
+# Part 2. PCA Exercise (45 points).
+
+In this exercise we will study UK Smoking Data (smoking.R, smoking.rda or smoking.csv):
+
+**Description**
+
+Survey data on smoking habits from the UK. The data set can be used for analyzing the demographic characteristics of smokers and types of tobacco consumed.
+
+**Format**
+
+A data frame with 1691 observations on the following 12 variables.
+
+`gender` - Gender with levels Female and Male.
+
+`age` - Age.
+
+`marital_status` - Marital status with levels Divorced, Married, Separated, Single and Widowed.
+
+`highest_qualification` - Highest education level with levels A Levels, Degree, GCSE/CSE, GCSE/O Level, Higher/Sub Degree, No Qualification, ONC/BTEC and Other/Sub Degree
+
+`nationality` - Nationality with levels British, English, Irish, Scottish, Welsh, Other, Refused and Unknown.
+
+`ethnicity` - Ethnicity with levels Asian, Black, Chinese, Mixed, White and Refused Unknown.
+
+`gross_income` - Gross income with levels Under 2,600, 2,600 to 5,200, 5,200 to 10,400, 10,400 to 15,600, 15,600 to 20,800, 20,800 to 28,600, 28,600 to 36,400, Above 36,400, Refused and Unknown.
+
+`region` - Region with levels London, Midlands & East Anglia, Scotland, South East, South West, The North and Wales
+
+`smoke` - Smoking status with levels No and Yes
+
+`amt_weekends` - Number of cigarettes smoked per day on weekends.
+
+`amt_weekdays` - Number of cigarettes smoked per day on weekdays.
+
+`type` - Type of cigarettes smoked with levels Packets, Hand-Rolled, Both/Mainly Packets and Both/Mainly Hand-Rolled
+
+Source
+National STEM Centre, Large Datasets from stats4schools, <https://www.stem.org.uk/resources/elibrary/resource/28452/large-datasets-stats4schools>.
+
+Obtained from <https://www.openintro.org/data/index.php?data=smoking>
+
+## Read and Clean the Data
+
+2.1 Read the data from smoking.R or smoking.rda
+> hint: take a look at source or load functions
+>       there is also smoking.csv file for a refference
+
+```{r setup, results="hide", warning=F, message=F}
+# load libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(data.table)
+library(plotly)
+library(lubridate)
+library(ggbiplot)
+library(caret)
+```
+
+```{r}
+# Load data
+load("smoking.rda")
+```
+
+Take a look into data
+```{r}
+# place holder
+head(smoking)
+summary(smoking)
+```
+
+There are many fields there so for this exercise lets only concentrate on 
+smoke, gender, age, marital_status and highest_qualification
+
+Create new data.frame with only these columns.
+
+```{r}
+# place holder
+df1<-smoking
+df1<-select(df1,smoke, gender, age, marital_status, highest_qualification,gross_income)
+df1
+```
+
+
+2.2 Omit all incomplete records.
+
+```{r}
+# place holder
+df1 %>% drop_na()
+str(df1)
+
+df1=df1[!grepl("Unknown|Refused", df1$gross_income),]
+df9<-df1
+df1
+```
+
+2.3 For PCA feature should be numeric. Some of fields are binary (`gender` and `smoke`) 
+and can easily be converted to numeric type (with one and zero).
+Other fields like `marital_status` has more than two categories, convert
+them to binary (i.e. is_married, is_devorced). Several features in the data 
+set are ordinal (`gross_income` and `highest_qualification`), convert them 
+to some king of sensible level (note that levels in factors are not in order). 
+(5 points)
+
+
+```{r}
+# place holder
+#ohe <- dummyVars(" ~ smoke + gender + marital_status + highest_qualification + gross_income", data #= df1, fullRank = T)
+#ohe_df <- data.frame(predict(ohe, newdata = df1))
+#ohe_df
+#ohe_df <- ohe_df[ - as.numeric(which(apply(ohe_df, 2, var) == 0))]
+df2 <- data.frame(
+  # convert binary from boolean format to numeric
+  smoker =as.numeric(df1$smoke=="Yes"),
+  male = as.numeric(df1$gender=="Male"),
+  age=as.numeric(df1$age),
+  # marital_status to multiple binary categories:
+  divorced=as.numeric(df1$marital_status=="Divorced"),
+  married=as.numeric(df1$marital_status=="Married"),
+  separated=as.numeric(df1$marital_status=="Separated"),
+  single=as.numeric(df1$marital_status=="Single"),
+  widowed=as.numeric(df1$marital_status=="Widowed"))
+
+df2$education <- revalue(df1$highest_qualification, c(
+  "No Qualification"=0,
+  
+  "GCSE/CSE"=1,
+  "GCSE/O Level"=1,
+  "ONC/BTEC"=1,
+  "A Levels"=1,
+  
+  "Other/Sub Degree"=1,
+  "Higher/Sub Degree"=1,
+  
+  "Degree"=2
+  ))
+df2$gross_income <- revalue(df1$gross_income,c(
+  "Under 2,600"=0,
+  "2,600 to 5,200"=1, 
+  "5,200 to 10,400"=2, 
+  "10,400 to 15,600"=3, 
+  "15,600 to 20,800"=4, 
+  "20,800 to 28,600"=5, 
+  "28,600 to 36,400"=6, 
+  "Above 36,400"=7))
+
+
+#convert to numeric
+for(col in colnames(df2)){
+  df2[col] <- as.numeric(df2[[col]])
+}
+
+head(df2)
+apply(df2, 2, var)
+
+```
+
+2.4. Do PCA on all columns except smoking status. (5 points)
+
+```{r}
+# place holder
+#pca_df1 <- subset(df1,select=-c(smoke,marital_status,highest_qualification,marital_status))
+pr.out <- prcomp(df2[-1],scale = TRUE)
+pr.out
+```
+
+2.5 Make a scree plot (5 points)
+
+```{r}
+# place holder
+#calculate total variance explained by each principal component
+#var_explained = 100* pr.out$sdev^2 / sum(pr.out$sdev^2)
+
+#create scree plot
+#library(ggplot2)
+
+#qplot(c(1:19), var_explained) + 
+#  geom_line() + 
+#  xlab("Principal Component") + 
+#  ylab("Variance Explained") +
+#  ggtitle("Scree Plot") +
+#  ylim(0, 1)
+pr.var <- pr.out$sdev^2
+pr.var
+pve <- 100 * pr.var / sum(pr.var)
+pve
+
+
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,30),type='b')
+plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,100),type='b')
+
+
+```
+Comment on the shape, 
+if you need to reduce dimensions home many would you choose
+
+
+```
+The Scree plots have a single elbow and the eigen values level off here.
+We need just to Principal componenst as at they in total describe more than 40% of the variance in the dataset.
+```
+
+2.6 Make a biplot color points by smoking field. (5 points)
+
+```{r}
+# place holder
+#biplot(pr.out, scale=0, groups=factor(ohe_df$smoke))
+ggplotly(ggbiplot(pr.out, scale = 0, groups=factor(df1$smoke)))
+
+```
+
+Comment on observed biplot.
+
+
+```
+PCA 1 explains 23.3% of the variability of the dataset and PC2 explains 18.1% of the dataset. Hence the first to principal components explain 41% percent of the variability of the dataset.
+In biplot, datapoints are represented as dots and the arrows/vectors contain information on the loadings. 
+Red dots are the people who smoke while blue dots are the people who dont.
+Length of these vectors interpret to how well the variables are represented in the graph and are directly proportional to their variability.
+The first to PC interpret well about the features marital_status, but dont perform well about the rest of the features in the dataset.
+The angle between 2 vectors shows represents collinearity. Matital_status single and married are strongly negative collinear. Age and education shows the most positive colliearity. 
+```
+
+Can we use first two PC to discriminate smoking?
+
+```
+Yes, we can use the first two to disciminate smoking.
+```
+
+2.7 Based on the loading vector can we name PC with some descriptive name? (5 points)
+
+```
+PC1 = PC_marital_status_single
+PC2 = PC_Marital_status_married_Gender_male
+```
+
+2.8 May be some of splits between categories or mapping to numerics should be revisited, if so what will you do differently? (5 points)
+
+```
+Looking at the biplot I can tell that the major difference is made by marital_status, that too, there should only be 2 categories among it, first is weather a person is married and second should be everyone else. So if I do the splits agains, I will combine everything other than married together. 
+
+```
+
+2.9 Follow your suggestion in 2.10 and redo PCA and biplot (5 points)
+
+```{r}
+df1<-smoking
+df1<-select(df1,smoke, gender, age, marital_status, highest_qualification,gross_income)
+
+
+df1 %>% drop_na()
+
+
+df1=df1[!grepl("Unknown|Refused", df1$gross_income),]
+df9<-df1
+
+
+df3 <- data.frame(
+  # convert binary from boolean format to numeric
+  smoker =as.numeric(df9$smoke=="Yes"),
+  male = as.numeric(df9$gender=="Male"),
+  age=as.numeric(df9$age),
+
+  married=as.numeric(df9$marital_status=="Married" ))
+
+df3$education <- revalue(df9$highest_qualification, c(
+  "No Qualification"=0,
+  
+  "GCSE/CSE"=1,
+  "GCSE/O Level"=1,
+  "ONC/BTEC"=1,
+  "A Levels"=1,
+  
+  "Other/Sub Degree"=1,
+  "Higher/Sub Degree"=1,
+  
+  "Degree"=2
+  ))
+df3$gross_income <- revalue(df9$gross_income,c(
+  "Under 2,600"=0,
+  "2,600 to 5,200"=1, 
+  "5,200 to 10,400"=2, 
+  "10,400 to 15,600"=3, 
+  "15,600 to 20,800"=4, 
+  "20,800 to 28,600"=5, 
+  "28,600 to 36,400"=6, 
+  "Above 36,400"=7))
+
+
+#convert to numeric
+for(col in colnames(df9)){
+  df9[col] <- as.numeric(df9[[col]])
+}
+
+head(df9)
+apply(df9, 2, var)
+
+#PCA except smoking 
+pr.out <- prcomp(df9[-1],scale = TRUE)
+pr.out
+
+#SCREE
+pr.var2 <- pr.out$sdev^2
+pr.var2
+pve2 <- 100 * pr.var2 / sum(pr.var2)
+pve2
+
+
+plot(pve2, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,30),type='b')
+plot(cumsum(pve2), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,100),type='b')
+
+#Biplot
+ggplotly(ggbiplot(pr.out, scale = 0, groups=factor(df9$smoke)))
+
+```
+
+
+# Part 3. Freestyle. (45 points).
+
+Get the data set from your final project (or find something suitable). The data set should have at least four variables and it shouldn't be used in class PCA examples: iris, mpg, diamonds and so on).
+
+* Convert a columns to proper format (15 points)
+* Perform PCA (5 points)
+* Make a skree plot (5 points)
+* Make a biplot (5 points)
+* Discuss your observations and how PCA can be used in your final project. (15 points)
+```{r}
+sales <- read.csv(file = "car_data.csv")
+head(sales)
+
+```
+
+
+```{r}
+summary(sales)
+```
+```{r}
+colnames(sales)
+```
+
+
+```{r}
+df1<-sales
+df1<-select(df1,Purchased, User.ID, Gender, Age, AnnualSalary, Purchased)
+df1
+```
+```{r}
+df1 %>% drop_na()
+str(df1)
+
+```
+
+```{r}
+df2 <- data.frame(
+  Purshase = df1$Purchased=="Yes",
+  male = df1$Gender=="Male",
+  age=df1$Age,
+  salary = df1$AnnualSalary	)
+
+
+#convert to numeric
+for(col in colnames(df2)){
+  df2[col] <- as.numeric(df2[[col]])
+}
+
+head(df2)
+apply(df2, 2, var)
+```
+```{r}
+pr.out <- prcomp(df2[-1],scale = TRUE)
+pr.out
+```
+
+```{r}
+pr.var <- pr.out$sdev^2
+pr.var
+pve <- 100 * pr.var / sum(pr.var)
+pve
+
+
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,50),type='b')
+plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,100),type='b')
+```
+```{r}
+ggplotly(ggbiplot(pr.out, scale = 0, groups=factor(df1$Purchase)))
+
+```
+```
+The dataset is from kaggle and use to find if a person will purchase a car or not. 
+From the scree plot we can tell that PC1 explains 40% of the variance and PC2 explains 31% of the variance. So, in all we two PC's we were able to find tha variability in more than 70% of the dataset. 
+In the biplot we can see that the green dots are for people who purchased a car and red for people who did not. We can tell that
+the most variability is shown by the feature gender, but rest of the loading vectors are almost orthogonal to it. at PC1 it shows 
+-.43 variability and at PC2 it shows .89 variability. Gender here has been the best feature at the 2 PC's for variability. 
+```

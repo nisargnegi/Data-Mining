@@ -1,0 +1,123 @@
+---
+title: "03_03_KernelPCA"
+output: html_document
+---
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used new libraries
+if (!require("kernlab")) install.packages("kernlab")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kernlab)
+library(ggplot2)
+library(plotly)
+library(ggbiplot)
+```
+
+
+# Example
+
+
+```{r}
+set.seed(1)
+r <- rnorm(n=80,mean=7,sd=1)
+angle <- runif(n=80,min=0,max=2*pi)
+
+df <- rbind(
+  data.frame(X=rnorm(n=20,mean=0,sd=1),Y=rnorm(n=20,mean=0,sd=1),g='center'),
+  data.frame(X=r*cos(angle),Y=r*sin(angle),g='ring')
+)
+
+
+plot_ly(df,x=~X,y=~Y,color=~g, colors=c("magenta","cyan")) %>% layout(yaxis=list(scaleanchor="x", scaleratio=1))
+#orca(scale=4,width=400,height=300)
+```
+
+```{r}
+pr.out <- prcomp(df[,1:2], scale = TRUE)
+ggbiplot(pr.out, scale = 0, groups=df$g) %>%
+ggplotly() # %>% orca(scale=4,width=400,height=300)
+```
+
+
+```{r}
+df2 <- data.frame(
+  X=df$X,
+  Y=df$Y,
+  Z=0.1*(df$X^2+df$Y^2),
+  g=df$g)
+
+plot_ly(df2,x=~X,y=~Y,z=~Z,color=~g, colors=c("magenta","cyan"))
+```
+
+
+```{r}
+pr.out <- prcomp(df2[,1:3], scale = TRUE)
+ggbiplot(pr.out, scale = 0, groups=df$g) %>%
+ggplotly() # %>% orca(scale=4,width=400,height=300)
+```
+
+
+```{r}
+library(kernlab) # for kpca function
+pca_k <- kpca(~.,data=df[,1:2],kernel="rbfdot", kpar=list(sigma=0.4))
+
+# principal component vectors
+pcv(pca_k)[1:5,]
+
+#  projection on the principal components
+rotated(pca_k)[1:5,1:4]
+proj <- rotated(pca_k)
+
+df3 <- data.frame(PC1=proj[,1],PC2=proj[,2],g=df$g)
+
+#plot the data projection on the components
+plot_ly(df3,x=~PC1, y=~PC2, color=~g, colors=c("magenta","cyan"))# %>% orca(scale=4,width=400,height=300)
+```
+
+```{r}
+v_eig <- eig(pca_k)
+df_eig <- data.frame(
+  num_of_princ_comp=1:length(v_eig),
+  eigenvalue=v_eig,
+  pve=cumsum(v_eig)/sum(v_eig))
+
+# Variance along principal component? No, eigenvalues as proxy to judge how may PC you need
+plot_ly(df_eig, x=~num_of_princ_comp,y=~eigenvalue) # eigenvalues
+
+# Proportion Variance Explained? No, eigenvalues as proxy to judge how may PC you need
+plot_ly(df_eig, x=~num_of_princ_comp,y=~pve)
+
+```
+
+
+# Iris
+iris
+
+```{r}
+# another example using the iris
+data(iris)
+
+iris_kpca <- kpca(~.,data=iris[,-5],kernel="rbfdot",
+  kpar=list(sigma=0.2))
+
+# principal component vectors
+pcv(iris_kpca)[1:5,]
+
+#  projection on the principal components
+rotated(iris_kpca)[1:5,]
+proj <- rotated(iris_kpca)
+
+iris2 <- data.frame(PC1=proj[,1],PC2=proj[,2],Species=iris$Species)
+
+#plot the data projection on the components
+plot_ly(iris2,x=~PC1, y=~PC2, color=~Species)
+
+```
+
+
+```{r}
+plot(iris_kpca@eig)
+```

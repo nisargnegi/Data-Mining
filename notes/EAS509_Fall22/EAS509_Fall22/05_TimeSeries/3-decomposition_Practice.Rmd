@@ -1,0 +1,222 @@
+
+---
+title: "Time series decomposition and transformations. Practice."
+date: '2022-09-21'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup, warning=F, message=F}
+
+
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+
+library(fpp3)
+```
+
+
+There are multiple libraries loaded and to make life easier here are
+some associations between used function and library name:
+
+"Regular" tydiverce
+
+ * tidyr
+   * pivot_longer - Pivot data from wide to long
+
+Time-Series tydiverce
+
+ * tsibble - tidy temporal data frames and tools
+   * index_by - set time index
+ * fable - forecast table
+ * fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+   * autoplot - also ggplot2 and feasts depending on object
+   * autolayer - also ggplot2 and feasts depending on object
+   * features - Extract features from a dataset
+   * model - Estimate models
+ * feasts - Feature Extraction and Statistics for Time Series in tsibble format
+   * autoplot - also ggplot2 and feasts depending on object
+   * autolayer - also ggplot2 and feasts depending on object
+   * guerrero - Guerrero's method for Box Cox lambda selection
+   * STL - Multiple seasonal decomposition by Loess
+   * gg_subseries
+ 
+ 
+# Adjustment
+
+```{r}
+## GDP --------------------------------------------------------------------------
+global_economy %>%
+  filter(Country == "Australia") %>%
+  autoplot(GDP)
+
+global_economy %>%
+  filter(Country == "Australia") %>%
+  autoplot(GDP / Population)
+```
+
+```{r}
+## Print retail adjusted by CPI --------------------------------------------------
+print_retail <- aus_retail %>%
+  filter(Industry == "Newspaper and book retailing") %>%
+  group_by(Industry) %>%
+  index_by(Year = year(Month)) %>%
+  summarise(Turnover = sum(Turnover))
+
+print_retail %>% autoplot(Turnover)
+```
+
+```{r}
+aus_economy <- global_economy %>%
+  filter(Code == "AUS")
+
+print_retail <- print_retail %>%
+  left_join(aus_economy, by = "Year") %>%
+  mutate(Adj_turnover = Turnover / CPI * 100) %>%
+  pivot_longer(c(Turnover, Adj_turnover),
+    names_to = "Type", values_to = "Turnover"
+  )
+```
+
+```{r}
+# Plot both on same graph
+print_retail %>%
+  ggplot(aes(x = Year, y = Turnover, col = Type)) +
+  geom_line() +
+  labs(
+    title = "Turnover: Australian print media industry",
+    y = "$AU"
+  )
+```
+
+```{r}
+# Use faceting
+print_retail %>%
+  mutate(Type = factor(Type,
+    levels = c("Turnover", "Adj_turnover")
+  )) %>%
+  ggplot(aes(x = Year, y = Turnover)) +
+  geom_line() +
+  facet_grid(Type ~ ., scales = "free_y") +
+  labs(
+    title = "Turnover: Australian print media industry",
+    y = "$AU"
+  )
+```
+
+# Math Transformation
+
+
+```{r}
+## Australian food retail --------------------------------------------------------
+
+food <- aus_retail %>%
+  filter(Industry == "Food retailing") %>%
+  summarise(Turnover = sum(Turnover))
+```
+
+```{r}
+food %>% autoplot(Turnover) +
+  labs(y = "Turnover ($AUD)")
+```
+
+```{r}
+food %>% autoplot(sqrt(Turnover)) +
+  labs(y = "Square root turnover")
+```
+
+```{r}
+food %>% autoplot(log(Turnover)) +
+  labs(y = "Log turnover")
+```
+
+```{r}
+food %>%
+  features(Turnover, features = guerrero)
+```
+
+```{r}
+food %>% autoplot(box_cox(Turnover, 0.08952696)) +
+  labs(y = "Box-Cox transformed turnover")
+```
+# Decomposition
+
+```{r}
+## US retail employment ----------------------------------------------------------
+
+us_retail_employment <- us_employment %>%
+  filter(year(Month) >= 1990, Title == "Retail Trade") %>%
+  select(-Series_ID)
+
+us_retail_employment %>%
+  autoplot(Employed) +
+  labs(
+    y = "Persons (thousands)",
+    title = "Total employment in US retail"
+  )
+```
+
+```{r}
+dcmp <- us_retail_employment %>%
+  model(stl = STL(Employed))
+components(dcmp)
+# %>% head()
+```
+
+```{r}
+us_retail_employment %>%
+  autoplot(Employed, color = "gray") +
+  autolayer(components(dcmp), trend, color = "red") +
+  labs(
+    y = "Persons (thousands)",
+    title = "Total employment in US retail"
+  )
+```
+
+```{r}
+components(dcmp) %>% autoplot()
+```
+
+```{r}
+components(dcmp) %>% gg_subseries(season_year)
+```
+
+```{r}
+us_retail_employment %>%
+  autoplot(Employed, color = "gray") +
+  autolayer(components(dcmp), season_adjust, color = "blue") +
+  labs(
+    y = "Persons (thousands)",
+    title = "Total employment in US retail"
+  )
+```
+
+```{r}
+us_retail_employment %>%
+  model(STL(Employed ~ season(window = 13) + trend(window = 7), robust = TRUE)) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "STL decomposition: US retail employment")
+```
+

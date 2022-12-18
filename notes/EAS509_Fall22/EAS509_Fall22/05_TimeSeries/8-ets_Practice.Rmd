@@ -1,0 +1,411 @@
+---
+title: "Ch8. Exponential smoothing. Practice."
+
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup, warning=F, message=F}
+
+
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+
+library(fpp3)
+```
+
+
+```{r}
+# Algerian Exports
+algeria_economy <- global_economy %>%
+  filter(Country == "Algeria")
+algeria_economy %>% autoplot(Exports)
+```
+
+```{r}
+fit <- algeria_economy %>%
+  model(
+    ANN = ETS(Exports ~ error("A") + trend("N") + season("N")),
+    MNN = ETS(Exports ~ error("M") + trend("N") + season("N")),
+    autoNN = ETS(Exports ~ trend("N") + season("N")),
+  )
+```
+
+```{r}
+fit %>%
+  select(ANN) %>%
+  report()
+```
+
+```{r}
+fit %>%
+  select(MNN) %>%
+  report()
+```
+
+```{r}
+fit %>%
+  select(autoNN) %>%
+  report()
+```
+
+```{r}
+tidy(fit)
+```
+
+```{r}
+glance(fit)
+```
+
+```{r}
+components(fit) %>% autoplot()
+```
+
+```{r}
+components(fit) %>%
+  left_join(fitted(fit), by = c("Country", ".model", "Year"))
+```
+
+```{r}
+fit %>%
+  forecast(h = 5) %>%
+  filter(.model == "MNN") %>%
+  autoplot(algeria_economy) +
+  ylab("Exports (% of GDP)") + xlab("Year")
+```
+
+
+```{r}
+# Australian population
+
+aus_economy <- global_economy %>%
+  filter(Code == "AUS") %>%
+  mutate(Pop = Population / 1e6)
+aus_economy %>% autoplot(Pop)
+```
+
+```{r}
+aus_economy %>%
+  model(auto = ETS(Pop)) %>%
+  report()
+```
+
+```{r}
+fit <- aus_economy %>%
+  model(AAN = ETS(Pop ~ error("A") + trend("A") + season("N")))
+report(fit)
+```
+
+```{r}
+components(fit) %>% autoplot()
+```
+
+```{r}
+components(fit) %>%
+  left_join(fitted(fit), by = c("Country", ".model", "Year"))
+```
+
+```{r}
+fit %>%
+  forecast(h = 10) %>%
+  autoplot(aus_economy) +
+  ylab("Population") + xlab("Year")
+```
+
+```{r}
+aus_economy %>%
+  model(holt = ETS(Pop ~ error("A") + trend("Ad") + season("N"))) %>%
+  report()
+```
+
+```{r}
+aus_economy %>%
+  model(holt = ETS(Pop ~ error("A") + trend("Ad") + season("N"))) %>%
+  forecast(h = 10) %>%
+  autoplot(aus_economy)
+```
+
+```{r}
+aus_economy %>%
+  filter(Year <= 2010) %>%
+  autoplot(Pop)
+```
+
+```{r}
+fit <- aus_economy %>%
+  filter(Year <= 2010) %>%
+  model(
+    ses = ETS(Pop ~ error("A") + trend("N") + season("N")),
+    holt = ETS(Pop ~ error("A") + trend("A") + season("N")),
+    damped = ETS(Pop ~ error("A") + trend("Ad") + season("N"))
+  )
+```
+
+```{r}
+tidy(fit)
+```
+
+```{r}
+accuracy(fit)
+```
+
+```{r}
+glance(fit)
+```
+
+```{r}
+forecast(fit) %>% accuracy(aus_economy)
+```
+
+```{r}
+fit <- global_economy %>%
+  model(
+    ets = ETS(Population)
+  )
+```
+
+```{r}
+fc <- fit %>%
+  forecast(h = 10)
+```
+
+```{r}
+## Aus holidays
+aus_holidays <- tourism %>%
+  filter(Purpose == "Holiday") %>%
+  summarise(Trips = sum(Trips))
+aus_holidays %>% autoplot(Trips)
+```
+
+```{r}
+fit <- aus_holidays %>%
+  model(
+    additive = ETS(Trips ~ error("A") + trend("A") + season("A")),
+    multiplicative = ETS(Trips ~ error("M") + trend("A") + season("M")),
+    auto = ETS(Trips)
+  )
+```
+
+```{r}
+fit %>%
+  select(multiplicative) %>%
+  report()
+fc <- fit %>% forecast()
+```
+
+```{r}
+fc %>%
+  autoplot(aus_holidays) + xlab("Year") +
+  ylab("Overnight trips (thousands)")
+```
+
+```{r}
+components(fit) %>% autoplot()
+```
+
+```{r}
+fit %>%
+  select(multiplicative) %>%
+  components() %>%
+  autoplot()
+```
+
+```{r}
+# Daily pedestrian data
+sth_cross_ped <- pedestrian %>%
+  filter(
+    Date >= "2016-07-01",
+    Sensor == "Southern Cross Station"
+  ) %>%
+  index_by(Date) %>%
+  summarise(Count = sum(Count) / 1000)
+```
+
+```{r}
+sth_cross_ped %>%
+  filter(Date <= "2016-07-31") %>%
+  model(
+    hw = ETS(Count ~ error("M") + trend("Ad") + season("M"))
+  ) %>%
+  forecast(h = "2 weeks") %>%
+  autoplot(sth_cross_ped %>% filter(Date <= "2016-08-14")) +
+  labs(
+    title = "Daily traffic: Southern Cross",
+    y = "Pedestrians ('000)"
+  )
+```
+
+
+
+# Part B
+
+
+
+
+
+
+```{r}
+
+
+## National populations
+
+fit <- global_economy %>%
+  mutate(Pop = Population / 1e6) %>%
+  model(ets = ETS(Pop))
+fit %>% forecast(h = 5)
+```
+
+```{r}
+## Example: Australian holiday tourism
+
+holidays <- tourism %>%
+  filter(Purpose == "Holiday")
+```
+
+```{r}
+fit <- holidays %>%
+  model(ets = ETS(Trips))
+```
+
+```{r}
+fit %>%
+  filter(Region == "Snowy Mountains") %>%
+  report()
+```
+
+```{r}
+fit %>%
+  filter(Region == "Snowy Mountains") %>%
+  components(fit) %>%
+  autoplot
+```
+
+```{r}
+fit %>%
+  filter(Region == "Snowy Mountains") %>%
+  forecast() %>%
+  autoplot(holidays, show_gap = FALSE) +
+  xlab("Year") + ylab("Overnight trips (thousands)")
+```
+
+```{r}
+# Sum over regions
+
+aus_holidays <- tourism %>%
+  filter(Purpose == "Holiday") %>%
+  summarise(Trips = sum(Trips))
+aus_holidays %>% autoplot()
+```
+
+```{r}
+fit <- aus_holidays %>% model(ETS(Trips))
+report(fit)
+```
+
+```{r}
+
+components(fit) %>%
+  autoplot() +
+  ggtitle("ETS(M,N,M) components")
+```
+
+```{r}
+fit %>% augment()
+```
+
+```{r}
+residuals(fit)
+residuals(fit, type = "response")
+```
+
+```{r}
+fit %>%
+  gg_tsresiduals()
+```
+
+```{r}
+
+## H02
+
+h02 <- PBS %>%
+  filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost))
+h02 %>%
+  autoplot(Cost)
+```
+
+```{r}
+h02 %>%
+  model(ETS(Cost)) %>%
+  report()
+```
+
+```{r}
+h02 %>%
+  model(ETS(Cost ~ error("A") + trend("A") + season("A"))) %>%
+  report()
+```
+
+```{r}
+h02 %>%
+  model(ETS(Cost)) %>%
+  forecast() %>%
+  autoplot(h02)
+```
+
+```{r}
+fit <- h02 %>%
+  model(
+    auto = ETS(Cost),
+    AAA = ETS(Cost ~ error("A") + trend("A") + season("A")),
+    damped = ETS(Cost ~ trend("Ad")),
+    forbidden = ETS(Cost ~ error("A") + trend("Ad") + season("M"))
+  )
+```
+
+```{r}
+fit %>% accuracy()
+```
+
+```{r}
+fit %>% glance()
+```
+
+```{r}
+fit %>% tidy()
+```
+
+```{r}
+# Example of STL + ETS
+
+h02 %>%
+  model(
+    decomposition_model(
+      STL(Cost),
+      ETS(season_adjust),
+      SNAIVE(season_year))
+  ) %>%
+  forecast(h=24) %>%
+  autoplot(h02)
+```

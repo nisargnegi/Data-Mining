@@ -1,0 +1,110 @@
+---
+title: 'L01. Interactive Data Visualization with plotly in R: S01. Motivation'
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: false
+    toc_float: true
+    toc_depth: 3
+    css: doc.css
+    df_print: paged
+  pdf_document: default
+always_allow_html: true
+---
+
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used libraries
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+# R package DT provides an R interface to the JavaScript library DataTables.
+if (!require("DT")) install.packages("DT")
+# geom_mark_hull
+if (!require("concaveman")) install.packages("concaveman")
+if (!require("ggforce")) install.packages("ggforce")
+```
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(plotly)
+library(ggforce)
+```
+
+# plotly - Documentation
+
+* Documentation:
+  * [https://plotly.com/r/](https://plotly.com/r/)
+* Book:
+  * Interactive web-based data visualization with R, plotly, and shiny
+by Carson Sievert [https://plotly-r.com/](https://plotly-r.com/)
+
+This document is essentially a brief notes of the book above.
+
+# Motivation
+
+* Why interactive data visualization (with plotly)?
+* What are the benifits over ggplot or basic plots?
+
+```{r warning = FALSE, message = FALSE}
+library(ggplot2)
+mpg
+```
+Exploratory Data Analysis with Static plots
+```{r}
+library(ggplot2)
+ggplot(mpg, aes(displ, hwy)) + geom_point()
+```
+
+What are max hwy? 'Outliers`?
+
+
+```{r}
+library(plotly)
+p <- ggplot(mpg, aes(displ, hwy)) + geom_point()
+ggplotly(p)
+```
+
+
+
+What are those models:
+```{r}
+library(plotly)
+m <- highlight_key(mpg)
+p <- ggplot(m, aes(displ, hwy)) + geom_point()
+gg <- highlight(ggplotly(p), "plotly_selected")
+crosstalk::bscols(gg, DT::datatable(m))
+```
+
+
+Final figure:
+```{r}
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() +
+  ggforce::geom_mark_hull(aes(filter = model == "corvette", label = model)) +
+  labs(
+    title = "Fuel economy from 1999 to 2008 for 38 car models",
+    caption = "Source: https://fueleconomy.gov/",
+    x = "Engine Displacement", 
+    y = "Miles Per Gallon"
+  )
+```
+
+
+
+Interactions:
+```{r}
+library(plotly)
+p <- ggplot(mpg, aes(displ, hwy,color=model)) + geom_point()
+ggplotly(p)
+```
+* hover over data-point - value
+* click-and-drag (horizontally, vertically, arbitrary) - zoom
+* click-and-drag axis - move alone axis
+* click-and-drag on axis corner - move axis corner value
+* shift-click-drag - move data view (pan)
+* double-click - restore view
+* click on legend item - show/hide items
+* double click on legend item - show/hide single item
+
+
+

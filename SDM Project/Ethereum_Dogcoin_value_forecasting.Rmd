@@ -1,0 +1,272 @@
+---
+title: "Ethereum_Dogecoin_value_forecasting"
+output: html_document
+date: "2022-12-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r setup, warning=F, message=F,echo=F}
+# Importing the libraries
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(hrbrthemes)
+library(forecast)
+library(MASS) 
+library(tseries)
+```
+
+```{r}
+# Loading the dataset for Ethereum
+ethereum <- read.csv("coin_Ethereum.csv",header=T)
+ethereum$Date <- as.Date(ethereum$Date)
+
+# # Loading the dataset for Dogecoin
+dogecoin <- read.csv("coin_Dogecoin.csv",header=T)
+dogecoin$Date <- as.Date(dogecoin$Date)
+```
+
+```{r}
+# Plotting the time series for Ethereum
+plot_eth_ts <- ethereum %>%
+  ggplot( aes(x=Date, y=Close)) +
+    geom_area(fill="#69b3a2", alpha=0.5) +
+    geom_line(color="#69b3a2") +
+    ylab("Ethereum Closing price ($)") +
+    theme_classic()
+
+plot_eth_ts <- ggplotly(plot_eth_ts)
+plot_eth_ts
+```
+
+Plotting Closing prices of Ethereum with best fit line
+```{r}
+# plotting with a LOESS line
+par(mfrow = c(1, 1))
+ggplot(ethereum, aes(x = Date, y = Close, group = 1)) +
+  geom_line() +
+  xlab("Date") +
+  ylab("USD") +
+  ggtitle("Closing Price of Ethereum") +
+  geom_smooth(method = "loess", level = 0)
+```
+
+Plotting Closing prices of Dogecoin with best fit line
+```{r}
+# plotting with a LOESS line
+par(mfrow = c(1, 1))
+ggplot(dogecoin, aes(x = Date, y = Close, group = 1)) +
+  geom_line() +
+  xlab("Date") +
+  ylab("USD") +
+  ggtitle("Closing Price of Dogecoin") +
+  geom_smooth(method = "loess", level = 0)
+```
+
+```{r}
+# Plotting the time series for DogeCoin
+plot_doge_ts <- dogecoin %>%
+  ggplot( aes(x=Date, y=Close)) +
+    geom_area(fill="#69b3a2", alpha=0.5) +
+    geom_line(color="#69b3a2") +
+    ylab("Dogecoin Closing price ($)") +
+    theme_classic()
+
+plot_doge_ts <- ggplotly(plot_doge_ts)
+plot_doge_ts
+```
+
+Creating a time series object for the closing pices of Ethereum and Dogecoin cryptocurrencies
+```{r}
+close_eth <- as.ts(ethereum$Close)
+close_doge <- as.ts(dogecoin$Close)
+```
+
+ACF and PACF plots for Ethereum
+```{r}
+ggtsdisplay(close_eth)
+```
+
+ACF and PACF plots for Dogecoin
+```{r}
+ggtsdisplay(close_doge)
+```
+ACF and PACF plots Ethereum plotly
+```{r}
+library(BETS)
+corrgram(close_eth, lag.max = 35, type = "correlation", mode = "simple",
+  ci = 0.95, style = "plotly", knit = F)
+corrgram(close_eth, lag.max = 35, type = "partial", mode = "simple",
+  ci = 0.95, style = "plotly", knit = F)
+```
+
+ACF and PACF plots Dogecoin plotly
+```{r}
+corrgram(close_doge, lag.max = 35, type = "correlation", mode = "simple",
+  ci = 0.95, style = "plotly", knit = F)
+corrgram(close_doge, lag.max = 35, type = "partial", mode = "simple",
+  ci = 0.95, style = "plotly", knit = F)
+```
+
+Box-Cox tranformation on Ethereum
+```{r}
+par(mfrow = c(1, 1))
+# library(MASS) is loaded
+boxcox_eth_transf <- boxcox(close_eth ~ as.numeric(1:length(close_eth)))
+```
+
+Box-Cox tranformation on Dogecoin
+```{r}
+par(mfrow = c(1, 1))
+# library(MASS) is loaded
+boxcox_doge_transf <- boxcox(close_doge ~ as.numeric(1:length(close_doge)))
+```
+
+Computing value of lambda fo which maximum log-likelihood is achieved for Ethereum
+```{r}
+lambda_eth <- boxcox_eth_transf$x[which(boxcox_eth_transf$y == max(boxcox_eth_transf$y))]
+lambda_eth
+```
+
+Computing value of lambda fo which maximum log-likelihood is achieved for Dogecoin
+```{r}
+lambda_doge <- boxcox_doge_transf$x[which(boxcox_doge_transf$y == max(boxcox_doge_transf$y))]
+lambda_doge
+```
+
+Transforming the Ethereum data and plotting the transformed data with the line of best fit
+```{r}
+# transforming the data
+ethereum$close_transf_eth <- log(close_eth)
+
+# new time series plot
+par(mfrow = c(1, 1))
+ggplot(ethereum, aes(x = Date, y = close_transf_eth, group = 1)) +
+  geom_line() +
+  xlab("Date") +
+  ylab("USD (after log transformation)") +
+  ggtitle("Series after Box-Cox (Ethereum)") +
+  geom_smooth(method = "loess", level = 0)
+```
+
+Transforming the Dogecoin data and plotting the transformed data with the line of best fit
+```{r}
+# transforming the data
+dogecoin$close_transf_doge <- log(close_doge)
+
+# new time series plot
+par(mfrow = c(1, 1))
+ggplot(dogecoin, aes(x = Date, y = close_transf_doge, group = 1)) +
+  geom_line() +
+  xlab("Date") +
+  ylab("USD (after log transformation)") +
+  ggtitle("Series after Box-Cox (Dogecoin)") +
+  geom_smooth(method = "loess", level = 0)
+```
+
+Comparing the variances of original Ethereum data and transformed data
+```{r}
+var(close_eth)
+var(ethereum$close_transf_eth)
+```
+
+Comparing the variances of original Dogecoin data and transformed data
+```{r}
+var(close_doge)
+var(dogecoin$close_transf_doge)
+```
+
+Differencing of the Ethereum data at Lag1
+```{r}
+par(mfrow = c(1, 1))
+
+diff1_eth <- diff(ethereum$close_transf_eth, lag = 1)
+autoplot(diff1_eth) + ggtitle("Ethereum Time Series after Differencing at lag 1 after Box-Cox")
+```
+
+Differencing of the Dogecoin data at Lag1
+```{r}
+par(mfrow = c(1, 1))
+
+diff1_doge <- diff(dogecoin$close_transf_doge, lag = 1)
+autoplot(diff1_doge) + ggtitle("Dogecoin Time Series after Differencing at lag 1 after Box-Cox")
+```
+
+Dickey-Fuller test to determine whether the Ethereum data is stationary
+```{r}
+adf.test(diff1_eth, alternative = "stationary")
+```
+
+Dickey-Fuller test to determine whether the Dogecoin data is stationary
+```{r}
+adf.test(diff1_doge, alternative = "stationary")
+```
+
+Fitting ARIMA model for Ethereum data
+```{r}
+arima_eth <- auto.arima(close_eth, stepwise = F, approximation = F, lambda = 0, ic = "aicc")
+arima_eth
+```
+Accuracy for Arima model fitted on Ethereum dataset
+```{r}
+accuracy(arima_eth)
+```
+
+Fitting ARIMA model for Dogecoin data
+```{r}
+arima_doge <- auto.arima(close_doge, stepwise = F, approximation = F, lambda = 0, ic = "aicc")
+arima_doge
+```
+
+Accuracy for Arima model fitted on Ethereum dataset
+```{r}
+accuracy(arima_doge)
+```
+
+Checking residuals for Ethereum and Dogecoin
+```{r setup, warning=F}
+k <- round(sqrt(length(open)))
+# a matrix comparing p-values for the three different tests
+diag.mat <- matrix(
+  data = NA, nrow = 2, ncol = 3,
+  dimnames = list(
+    c("Ethereum", "Dogecoin"),
+    c("Ljung-Box", "McLeod-Li", "Shapiro-Wilk")
+  )
+)
+
+residuals_eth <- arima_eth$residuals
+residuals_doge <- arima_doge$residuals
+
+# testing Ethereum residuals
+diag.mat[1, 1] <- Box.test(residuals_eth, type = "Ljung-Box", lag = k, fitdf = 0)$p.value
+diag.mat[1, 2] <- Box.test(residuals_eth^2, type = "Ljung-Box", lag = k, fitdf = 0)$p.value
+diag.mat[1, 3] <- shapiro.test(residuals_eth)$p.value
+
+# testing Dogecoin residuals
+diag.mat[2, 1] <- Box.test(residuals_doge, type = "Ljung-Box", lag = k, fitdf = 2)$p.value
+diag.mat[2, 2] <- Box.test(residuals_doge^2, type = "Ljung-Box", lag = k, fitdf = 2)$p.value
+diag.mat[2, 3] <- shapiro.test(residuals_doge)$p.value
+
+# matrix of p-values
+round(diag.mat, 3)
+
+```
+
+
+# Forecasting
+```{r}
+forecast_eth <- forecast(ethereum$Close, model = arima_eth, lambda = 0)
+forecast_doge <- forecast(dogecoin$Close, model = arima_doge, lambda = 0)
+
+plot(forecast_eth,main="Ethereum Coin Forecasting")
+plot(forecast_doge,main="Dogecoin Forecasting")
+```
+
+
+

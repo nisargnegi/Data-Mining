@@ -1,0 +1,42 @@
+---
+title: "Homework 0"
+author: "Shradha Wapare"
+date: '2022-09-06'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+tinytex::install_tinytex(force=TRUE)
+
+
+
+library(ggplot2)
+library(dplyr)
+```
+
+Read and execute this R markdown notebook. \*update the author name and the date in the top header of this notebook. \* knit the pdf document from this notebook (you will need LaTex on your system, try MiKTeX version).
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars) %>% knitr::kable()
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+ggplot(pressure, aes(x=temperature, y=pressure))+geom_point()+geom_line()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## knit pdf document from this R markdown notebook
+
+For the LaTex needs install MiKTeX (on windows it is more reliable than TinyTeX in my experience).

@@ -1,0 +1,308 @@
+---
+title: "Ch12-unsup-lab"
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.11.2
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+```{r eval=FALSE,warning = FALSE, message = FALSE}
+# used new libraries
+if (!require("ISLR2")) install.packages("ISLR2")
+if (!require("cluster")) install.packages("cluster")
+
+```
+
+```{r setup, include=FALSE,warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(plotly)
+library(cluster)
+library(dplyr)
+```
+
+
+# K-Means Clustering
+
+## Simulatet Example 2
+
+The function `kmeans()` performs $K$-means clustering in
+`R`.  We begin with a simple simulated example in which there
+truly are two clusters in the data: the first 25 observations have a
+mean shift relative to the next 25 observations.
+
+```{r chunk28}
+set.seed(2)
+x <- matrix(rnorm(50 * 2), ncol = 2)
+# shift the first 25 observations
+x[1:25, 1] <- x[1:25, 1] + 3
+x[1:25, 2] <- x[1:25, 2] - 4
+
+plot_ly(x=x[,1],y=x[,2])
+```
+
+
+
+
+We now perform $K$-means clustering with $K=2$.
+
+```{r chunk29}
+km.out <- kmeans(x, 2, nstart = 20)
+```
+
+The cluster assignments of the 50 observations are contained in  `km.out$cluster`.
+
+```{r chunk30}
+km.out$cluster
+```
+```{r chunk30}
+sum(km.out$cluster==1)
+```
+
+
+The $K$-means clustering perfectly separated the observations into two clusters even though we did not supply any group information to `kmeans()`. We can plot the data, with each observation
+colored according to its cluster assignment.
+
+```{r chunk31}
+plot(x, col = (km.out$cluster + 1),
+    main = "K-Means Clustering Results with K = 2",
+    xlab = "", ylab = "", pch = 20, cex = 2)
+```
+```{r chunk31}
+plot_ly(x=x[,1],y=x[,2], color = as.factor(km.out$cluster)) %>% 
+  layout(title = "K-Means Clustering Results with K = 2")
+```
+
+Here the observations can be easily plotted because they are two-dimensional. If there were more than two
+variables then we could instead perform PCA and plot the first two principal components score vectors.
+
+In this example, we knew that there really were two clusters because we generated the data. However, for real data, in general we do not
+know the true number of clusters. We could instead have performed $K$-means clustering on this example with $K=3$.
+
+```{r chunk32}
+set.seed(4)
+km.out <- kmeans(x, 3, nstart = 20)
+km.out
+plot(x, col = (km.out$cluster + 1),
+    main = "K-Means Clustering Results with K = 3",
+    xlab = "", ylab = "", pch = 20, cex = 2)
+```
+
+When $K=3$, $K$-means clustering  splits up the two clusters.
+
+To run the `kmeans()` function in `R` with multiple initial cluster assignments, we use the
+`nstart` argument. If a value of `nstart` greater than one is used, then $K$-means clustering will be performed using
+multiple random assignments in Step~1 of Algorithm 12.2, and the `kmeans()` function will report only the best results. Here we compare using `nstart = 1` to `nstart = 20`.
+
+```{r chunk33}
+set.seed(4)
+km.out <- kmeans(x, 3, nstart = 1)
+km.out$tot.withinss
+km.out <- kmeans(x, 3, nstart = 20)
+km.out$tot.withinss
+```
+
+Note that `km.out$tot.withinss` is the total within-cluster sum of squares, which  we seek to minimize by performing $K$-means clustering (Equation 12.17). The individual within-cluster sum-of-squares are contained in the vector `km.out$withinss`.
+
+We *strongly* recommend always running $K$-means clustering with
+a large value of `nstart`, such as 20 or 50, since otherwise an
+undesirable local optimum may be obtained.
+
+When performing $K$-means clustering, in addition to using multiple initial cluster assignments, it is
+also  important to set a random seed using the `set.seed()` function. This way, the
+initial cluster assignments in Step~1 can
+be replicated, and the $K$-means output will be fully reproducible.
+
+### Choosing k: Elbow
+
+```{r}
+
+km_out_list <- lapply(1:10, function(k) list(
+  k=k,
+  km_out=kmeans(x, k, nstart = 20)))
+
+km_results <- data.frame(
+  k=sapply(km_out_list, function(k) k$k),
+  totss=sapply(km_out_list, function(k) k$km_out$totss),
+  tot_withinss=sapply(km_out_list, function(k) k$km_out$tot.withinss)
+  )
+km_results
+plot_ly(km_results,x=~k,y=~tot_withinss) %>% add_markers() %>% add_paths()
+```
+
+
+### Choosing k: gap statistics
+
+```{r}
+gap_kmeans <- clusGap(x, kmeans, nstart = 20, K.max = 10, B = 100)
+
+plot(gap_kmeans, main = "Gap Statistic: kmeans")
+```
+### Choosing k: Silhouette
+
+```{r fig.width=9,fig.height=9}
+par(mar = c(5, 2, 4, 2), mfrow=c(2,2))
+for(k in c(2,3,4,9)) {
+  kmeans_cluster <- kmeans(x, k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(x))
+  plot(si,main="")
+}
+par(mar = c(1, 1, 1, 1), mfrow=c(1,1))
+```
+
+## Example: Simulated 2
+
+
+```{r}
+set.seed(12)
+r1 <- rnorm(n=80,mean=7,sd=0.5)
+angle1 <- runif(n=80,min=0,max=pi)+pi/2
+r2 <- rnorm(n=80,mean=7,sd=0.5)
+angle2 <- runif(n=80,min=pi,max=2*pi)+pi/2
+
+df <- rbind(
+  data.frame(x=r1*cos(angle1)+1,y=r1*sin(angle1)+7/2,g='C1'),
+  data.frame(x=r2*cos(angle2)-1,y=r2*sin(angle2)-7/2,g='C2')
+)
+
+plot_ly(df,x=~x,y=~y,color=~g, colors=c("red","blue")) %>% layout(yaxis=list(scaleanchor="x", scaleratio=1))
+```
+
+```{r chunk31}
+km_out <- kmeans(df[,-3], 2, nstart = 20)
+plot_ly(x=df$x,y=df$y, color = as.factor(km_out$cluster), colors=c("red","blue")) %>% layout(yaxis=list(scaleanchor="x", scaleratio=1))
+```
+```{r}
+
+km_out_list <- lapply(1:10, function(k) list(
+  k=k,
+  km_out=kmeans(df[,-3], k, nstart = 20)))
+
+km_results <- data.frame(
+  k=sapply(km_out_list, function(k) k$k),
+  totss=sapply(km_out_list, function(k) k$km_out$totss),
+  tot_withinss=sapply(km_out_list, function(k) k$km_out$tot.withinss)
+  )
+km_results
+plot_ly(km_results,x=~k,y=~tot_withinss) %>% add_markers() %>% add_paths()
+```
+```{r}
+gap_kmeans <- clusGap(df[,-3], kmeans, nstart = 30, K.max = 20, B = 100)
+
+plot(gap_kmeans, main = "Gap Statistic: kmeans")
+```
+
+```{r fig.width=9,fig.height=9}
+#Silhouette
+par(mar = c(5, 2, 4, 2), mfrow=c(2,2))
+for(k in c(2,3,4,9)) {
+  kmeans_cluster <- kmeans(df[,-3], k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(df[,-3]))
+  plot(si,main="")
+}
+par(mar = c(1, 1, 1, 1), mfrow=c(1,1))
+```
+
+```{r fig.width=9,fig.height=9}
+#Silhouette
+
+results <- lapply(2:20, function(k) {
+  kmeans_cluster <- kmeans(df[,-3], k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(df[,-3]))
+  data.frame(k=k,sil_width=mean(si[,'sil_width']),sil_width_min=min(si[,'sil_width']))
+})
+si_df <- bind_rows(results)
+plot_ly(si_df, x=~k,y=~sil_width) %>%
+  add_markers() %>% add_lines() %>%
+  add_markers(y=~sil_width_min) %>% add_lines(y=~sil_width_min)
+```
+
+## Example: Iris
+
+```{r}
+head(iris)
+```
+
+```{r}
+# scale features
+iris_scaled <- scale(iris[-5])
+iris_scaled[1:3,]
+```
+```{r chunk31}
+km_out <- kmeans(iris_scaled, 2, nstart = 20)
+
+```
+
+```{r}
+# lets us PC for visualization
+pr_out <- prcomp(iris_scaled, scale = TRUE)
+
+
+plot_ly(x=pr_out$x[,1],y=pr_out$x[,2], color = as.factor(km_out$cluster), colors=c("red","blue"))
+```
+```{r chunk31}
+km_out <- kmeans(iris_scaled, 3, nstart = 20)
+
+subplot(
+  plot_ly(x=pr_out$x[,1],y=pr_out$x[,2], color = as.factor(km_out$cluster), colors=c("red","blue","green")),
+  plot_ly(x=pr_out$x[,1],y=pr_out$x[,2], color = iris$Species, colors=c("red","blue","green"))
+)
+```
+
+```{r}
+#WSS
+km_out_list <- lapply(1:10, function(k) list(
+  k=k,
+  km_out=kmeans(iris_scaled, k, nstart = 20)))
+
+km_results <- data.frame(
+  k=sapply(km_out_list, function(k) k$k),
+  totss=sapply(km_out_list, function(k) k$km_out$totss),
+  tot_withinss=sapply(km_out_list, function(k) k$km_out$tot.withinss)
+  )
+km_results
+plot_ly(km_results,x=~k,y=~tot_withinss) %>% add_markers() %>% add_paths()
+```
+
+```{r}
+gap_kmeans <- clusGap(iris_scaled, kmeans, nstart = 20, K.max = 10, B = 100)
+plot(gap_kmeans, main = "Gap Statistic: kmeans")
+```
+
+
+
+```{r fig.width=9,fig.height=9}
+#Silhouette
+par(mar = c(5, 2, 4, 2), mfrow=c(2,2))
+for(k in c(2,3,4,9)) {
+  kmeans_cluster <- kmeans(iris_scaled, k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(iris_scaled))
+  plot(si,main="")
+}
+par(mar = c(1, 1, 1, 1), mfrow=c(1,1))
+```
+
+```{r fig.width=9,fig.height=9}
+#Silhouette
+
+results <- lapply(2:20, function(k) {
+  kmeans_cluster <- kmeans(iris_scaled, k, nstart=20)
+  si <- silhouette(kmeans_cluster$cluster, dist = dist(iris_scaled))
+  data.frame(k=k,sil_width=mean(si[,'sil_width']),sil_width_min=min(si[,'sil_width']))
+})
+si_df <- bind_rows(results)
+plot_ly(si_df, x=~k,y=~sil_width) %>%
+  add_markers() %>% add_lines() %>%
+  add_markers(y=~sil_width_min) %>% add_lines(y=~sil_width_min)
+```
+
+
+
+

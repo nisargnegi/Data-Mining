@@ -1,0 +1,224 @@
+---
+title: "Homework 2. PCA."
+author: "Your Name"
+date: '2022-09-21'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+# Part 1. PCA vs Linear Regression (10 points).
+
+Lets say we have two 'features', let one be $x$ and another $y$.
+Recall that In linear regression we are looking to get model like:
+
+
+$$y_i=\beta_0+\beta_1*x_i+\varepsilon_i$$
+
+after the fitting, for each data point we would have:
+$$y_i=\hat{\beta_0}+\hat{\beta_1}*x_i+r_i$$
+where $r_i$ is residual. It can be rewritten as:
+
+$$\hat{\beta_0}+r_i=y_i-\hat{\beta_1}*x_i\;\;\;\;\;(1)$$
+
+The first principal component $z_1$ calculated on $(x,y)$ is
+$$z_{i1}=\phi_{i1}y_i+\phi_{i1}x_i$$
+Dividing it by $\phi_{i1}$:
+$$\frac{z_{i1}}{\phi_{i1}}=y_i+\frac{\phi_{i1}}{\phi_{i1}}x_i\;\;\;\;\;(2)$$
+
+There is a functional resemblance between two last equation (described linear relationship between $y$ and $x$). Is following true: 
+$$\hat{\beta_0}+r_i=\frac{z_{i1}}{\phi_{i1}}$$
+$$\frac{\phi_{i1}}{\phi_{i1}}=-\hat{\beta_1}$$
+**Answer**: *(just yes or no)*
+
+
+What are the difference between coefficients optimization in linear regression and first PCA calculations?
+
+
+**Answer**:
+
+*(here should be the answere. help yourself with a plot)*
+
+
+# Part 2. PCA Exercise (45 points).
+
+In this exercise we will study UK Smoking Data (smoking.R, smoking.rda or smoking.csv):
+
+**Description**
+
+Survey data on smoking habits from the UK. The data set can be used for analyzing the demographic characteristics of smokers and types of tobacco consumed.
+
+**Format**
+
+A data frame with 1691 observations on the following 12 variables.
+
+`gender` - Gender with levels Female and Male.
+
+`age` - Age.
+
+`marital_status` - Marital status with levels Divorced, Married, Separated, Single and Widowed.
+
+`highest_qualification` - Highest education level with levels A Levels, Degree, GCSE/CSE, GCSE/O Level, Higher/Sub Degree, No Qualification, ONC/BTEC and Other/Sub Degree
+
+`nationality` - Nationality with levels British, English, Irish, Scottish, Welsh, Other, Refused and Unknown.
+
+`ethnicity` - Ethnicity with levels Asian, Black, Chinese, Mixed, White and Refused Unknown.
+
+`gross_income` - Gross income with levels Under 2,600, 2,600 to 5,200, 5,200 to 10,400, 10,400 to 15,600, 15,600 to 20,800, 20,800 to 28,600, 28,600 to 36,400, Above 36,400, Refused and Unknown.
+
+`region` - Region with levels London, Midlands & East Anglia, Scotland, South East, South West, The North and Wales
+
+`smoke` - Smoking status with levels No and Yes
+
+`amt_weekends` - Number of cigarettes smoked per day on weekends.
+
+`amt_weekdays` - Number of cigarettes smoked per day on weekdays.
+
+`type` - Type of cigarettes smoked with levels Packets, Hand-Rolled, Both/Mainly Packets and Both/Mainly Hand-Rolled
+
+Source
+National STEM Centre, Large Datasets from stats4schools, <https://www.stem.org.uk/resources/elibrary/resource/28452/large-datasets-stats4schools>.
+
+Obtained from <https://www.openintro.org/data/index.php?data=smoking>
+
+## Read and Clean the Data
+
+2.1 Read the data from smoking.R or smoking.rda
+> hint: take a look at source or load functions
+>       there is also smoking.csv file for a refference
+
+```{r setup, results="hide", warning=F, message=F}
+# load libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+
+```
+
+```{r}
+# Load data
+load("smoking.rda")
+```
+
+Take a look into data
+```{r}
+# place holder
+View(smoking)
+```
+
+There are many fields there so for this exercise lets only concentrate on 
+smoke, gender, age, marital_status and highest_qualification
+
+Create new data.frame with only these columns.
+
+```{r}
+# place holder
+df1<-smoking
+df1<-select(df1,smoke, gender, age, marital_status, highest_qualification)
+df1
+```
+
+
+2.2 Omit all incomplete records.
+
+```{r}
+# place holder
+df1 %>% drop_na()
+str(df1)
+```
+
+2.3 For PCA feature should be numeric. Some of fields are binary (`gender` and `smoke`) 
+and can easily be converted to numeric type (with one and zero).
+Other fields like `marital_status` has more than two categories, convert
+them to binary (i.e. is_married, is_devorced). Several features in the data 
+set are ordinal (`gross_income` and `highest_qualification`), convert them 
+to some king of sensible level (note that levels in factors are not in order). 
+(5 points)
+
+
+```{r}
+# place holder
+df1$gender[df1$gender == 'Female'] <- "2"
+df1$gender[df1$gender == 'Male'] <- "1"
+df1$marital_status[df1$marital_status == 'Divorced'] <- "is_divorced"
+df1$marital_status[df1$marital_status == 'Single'] <- "is_divorced"
+df1$marital_status[df1$marital_status == 'Separated'] <- "is_divorced"
+df1$marital_status[df1$marital_status == 'Widowed'] <- "is_divorced"
+df1$marital_status[df1$marital_status == 'Married'] <- "is_married"
+
+df1$highest_qualification[df1$highest_qualification == 'Married'] <- "is_married"
+
+df1
+```
+
+2.4. Do PCA on all columns except smoking status. (5 points)
+
+```{r}
+# place holder
+pca_df1 <- subset(df1,select=-c(smoke,marital_status,highest_qualification,marital_status))
+pca_df1
+pr.out <- prcomp(pca_df1, scale = TRUE)
+pr.out
+```
+
+2.5 Make a scree plot (5 points)
+
+```{r}
+# place holder
+```
+Comment on the shape, 
+if you need to reduce dimensions home many would you choose
+
+
+```
+<place holder>
+```
+
+2.6 Make a biplot color points by smoking field. (5 points)
+
+```{r}
+# place holder
+```
+
+Comment on observed biplot.
+
+```
+<place holder>
+```
+
+Can we use first two PC to discriminate smoking?
+
+```
+<place holder>
+```
+
+2.7 Based on the loading vector can we name PC with some descriptive name? (5 points)
+
+```
+<place holder>
+```
+
+2.8 May be some of splits between categories or mapping to numerics should be revisited, if so what will you do differently? (5 points)
+
+```
+<place holder>
+```
+
+2.9 Follow your suggestion in 2.10 and redo PCA and biplot (5 points)
+
+```{r}
+# place holder
+```
+
+
+# Part 3. Freestyle. (45 points).
+
+Get the data set from your final project (or find something suitable). The data set should have at least four variables and it shouldn't be used in class PCA examples: iris, mpg, diamonds and so on).
+
+* Convert a columns to proper format (15 points)
+* Perform PCA (5 points)
+* Make a skree plot (5 points)
+* Make a biplot (5 points)
+* Discuss your observations and how PCA can be used in your final project. (15 points)

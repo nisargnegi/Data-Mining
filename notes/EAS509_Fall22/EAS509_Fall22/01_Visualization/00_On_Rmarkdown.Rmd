@@ -1,0 +1,131 @@
+---
+title: "Rmarkdown"
+author: "Your Name"
+date: '2022-08-30'
+output: pdf_document
+---
+
+Rmarkdown combines markdown markup language with R scripting. 
+Rmarkdown notebooks can be knitted to pdf, html or word document.
+
+
+```{r setup, include=FALSE}
+# This is R code
+# This several lines called chunk
+# Chunk can have a name, this one has speacial name "setup"
+# chunk can have options for its execution, 
+# e.g. include=FALSE would not show code or execution output of this 
+# chunk in knitted document
+knitr::opts_chunk$set(echo = TRUE)
+
+print("Loading libraries")
+library(ggplot2)
+library(dplyr)
+#
+```
+
+```{r}
+# another chunk
+# to execute whole chunk press ctrl-shift-enter
+print("Hello World 1!")
+print("Hello World 2!")
+print("Hello World 3!")
+# to execute only one line press ctrl-enter
+print("Hello World 4!")
+```
+
+See <https://rmarkdown.rstudio.com/lesson-1.html> for more details.
+
+
+Some markdown cheat sheet
+
+Plain text.
+
+End a line with two spaces to
+start a new paragraph.
+
+Also end with a backslash\
+to make a new line.
+
+*italics* and **bold**
+
+superscript^2^/subscript~2~
+
+~~strikethrough~~
+
+escaped: \* \_ \\
+
+endash: --, emdash: ---
+
+# Header 1
+
+## Header 2
+
+...
+
+###### Header 6
+
+- unordered list
+- item 2
+ - item 2a (indent 1 tab)
+ - item 2b
+
+1. ordered list
+2. item 2
+ - item 2a (indent 1 tab)
+ - item 2b
+
+<link url>
+[This is a link.](link url)
+[This is another link][id].
+ At the end of the document:
+ [id]: link url
+
+`verbatim code`
+
+```
+multiple lines
+of verbatim code
+```
+
+> block quotes
+
+equation: $e^{i \pi} + 1 = 0$
+
+equation block:
+$$E = mc^{2}$$
+
+horizontal rule:
+---
+| Right | Left | Default | Center |
+|-------:|:------|-----------|:---------:|
+| 12 | 12 | 12 | 12 |
+| 123 | 123 | 123 | 123 |
+| 1 | 1 | 1 | 1 |
+
+
+
+# R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars) %>% knitr::kable()
+```
+
+# Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+ggplot(pressure, aes(x=temperature, y=pressure))+geom_point()+geom_line()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# knit pdf document from this R markdown notebook
+
+For the LaTex needs install MiKTeX (on windows it is more reliable than TinyTeX in my experience).
+
